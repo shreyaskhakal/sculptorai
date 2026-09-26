@@ -3,23 +3,35 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Box, Lock, Mail, ArrowRight } from "lucide-react";
+import { Box, Lock, Mail, ArrowRight, AlertCircle, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { useAuth } from "@/components/auth/AuthProvider";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { signIn, enableDemoMode } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    // Smooth login transition to dashboard
-    setTimeout(() => {
-      setIsLoading(false);
+    setErrorMsg("");
+
+    const res = await signIn(email, password);
+    setIsLoading(false);
+    if (res.error) {
+      setErrorMsg(res.error);
+    } else {
       router.push("/dashboard");
-    }, 600);
+    }
+  };
+
+  const handleDemoAccess = () => {
+    enableDemoMode();
+    router.push("/dashboard");
   };
 
   return (
@@ -77,6 +89,13 @@ export default function LoginPage() {
             </div>
           </div>
 
+          {errorMsg && (
+            <div className="flex items-center gap-2 p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs">
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+              <span>{errorMsg}</span>
+            </div>
+          )}
+
           <Button
             type="submit"
             size="md"
@@ -86,6 +105,17 @@ export default function LoginPage() {
           >
             <span>Sign In to SculptorAI</span>
             <ArrowRight className="w-4 h-4" />
+          </Button>
+
+          <Button
+            type="button"
+            size="md"
+            variant="secondary"
+            onClick={handleDemoAccess}
+            className="w-full text-xs text-[#00E5FF] border-[#00E5FF]/30 hover:border-[#00E5FF]"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Continue in Demo Mode</span>
           </Button>
         </form>
 

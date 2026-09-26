@@ -183,3 +183,27 @@ class SCULPTOR_OT_clear(bpy.types.Operator):
         props.last_status = "Ready"
         props.last_error = ""
         return {'FINISHED'}
+
+class SCULPTOR_OT_fetch_task(bpy.types.Operator):
+    bl_idname = "sculptor.fetch_task"
+    bl_label = "Check Web Tasks"
+    bl_description = "Fetch pending execution tasks sent from the SculptorAI web application"
+
+    def execute(self, context):
+        props = context.scene.sculptor_props
+        props.last_status = "Polling Web Tasks..."
+        ok, tasks = SculptorApiClient.fetch_pending_tasks(context)
+        if ok and len(tasks) > 0:
+            latest = tasks[0]
+            props.active_execution_id = latest.get("executionId", "")
+            props.generated_code = latest.get("script", "")
+            props.plan_summary = latest.get("prompt", "Task received from Web Studio")
+            props.last_status = "Pending Approval (From Web)"
+            self.report({'INFO'}, f"Received task: {props.plan_summary}")
+        elif ok:
+            props.last_status = "Connected (No Pending Tasks)"
+            self.report({'INFO'}, "No pending execution requests from web.")
+        else:
+            props.last_status = "Polling Failed"
+            self.report({'WARNING'}, "Could not poll tasks.")
+        return {'FINISHED'}

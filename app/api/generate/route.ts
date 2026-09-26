@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { projectId, prompt, blenderVersion, style, complexity } = parsed.data;
+    const { projectId, prompt, blenderVersion, style, complexity, previousCode, mode } = parsed.data;
     const sanitized = sanitizePrompt(prompt);
 
     const ai = getAIProvider();
@@ -34,6 +34,8 @@ export async function POST(req: NextRequest) {
       style,
       complexity,
       includeCode: true,
+      previousCode,
+      mode,
     });
 
     const generationId = `gen_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;

@@ -69,6 +69,11 @@ Request: "${input.prompt}"
 Target Blender Version: ${blenderVer}
 Target Style: ${style}
 Target Complexity: ${complexity}
+${input.previousCode ? `Existing Scene Script to Modify:
+\`\`\`python
+${input.previousCode}
+\`\`\`
+CRITICAL INSTRUCTION: The user is requesting a modification or refinement to the scene above. Retain established objects and collections, and surgically apply requested geometric, material, scale, or lighting changes.` : ""}
 ${input.context ? `Additional Scene Context: ${input.context}` : ""}
 
 Generate the complete JSON modeling plan and executable Blender Python (bpy).

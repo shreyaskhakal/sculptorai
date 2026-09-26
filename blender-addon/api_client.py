@@ -99,3 +99,16 @@ class SculptorApiClient:
                 return True, data
         except Exception as e:
             return False, {"error": str(e)}
+
+    @staticmethod
+    def fetch_pending_tasks(context=None):
+        base_url = get_api_url(context)
+        url = f"{base_url}/api/executions?status=pending"
+        headers = get_auth_headers(context)
+        req = urllib.request.Request(url, headers=headers, method="GET")
+        try:
+            with urllib.request.urlopen(req, timeout=8) as response:
+                data = json.loads(response.read().decode('utf-8'))
+                return True, data.get("executions", [])
+        except Exception as e:
+            return False, {"error": str(e)}

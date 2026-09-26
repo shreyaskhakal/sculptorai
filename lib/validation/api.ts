@@ -7,6 +7,8 @@ export const GenerateRequestSchema = z.object({
   includeCode: z.boolean().default(true),
   style: z.enum(["realistic", "low-poly", "stylized", "sci-fi", "minimalist"]).default("low-poly"),
   complexity: z.enum(["simple", "medium", "complex"]).default("medium"),
+  previousCode: z.string().optional(),
+  mode: z.enum(["create", "modify"]).default("create"),
 });
 
 export const DebugRequestSchema = z.object({
@@ -20,6 +22,8 @@ export const DebugRequestSchema = z.object({
 export const ExecutionCreateSchema = z.object({
   generationId: z.string().uuid().or(z.string().min(1)),
   blenderVersion: z.string().default("4.x"),
+  script: z.string().optional(),
+  prompt: z.string().optional(),
 });
 
 export const ExecutionResultSchema = z.object({

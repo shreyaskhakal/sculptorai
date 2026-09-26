@@ -25,6 +25,7 @@ class VIEW3D_PT_sculptor_ai(bpy.types.Panel):
             row_status.label(text=f"Status: {props.last_status}", icon='WORLD')
 
         row_status.operator("sculptor.test_connection", text="", icon='FILE_REFRESH')
+        row_status.operator("sculptor.fetch_task", text="Sync Web Tasks", icon='IMPORT')
 
         # Prompt Input
         col_prompt = layout.column(align=True)

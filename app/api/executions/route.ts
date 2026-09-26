@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { generationId, blenderVersion } = parsed.data;
+    const { generationId, blenderVersion, script, prompt } = parsed.data;
     const executionId = `exec_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
     const record = {
@@ -34,6 +34,8 @@ export async function POST(req: NextRequest) {
       generationId,
       status: "pending" as const,
       blenderVersion,
+      script: script || "",
+      prompt: prompt || "Model Generation",
       createdAt: new Date().toISOString(),
     };
 
@@ -49,6 +51,7 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
+  const statusFilter = searchParams.get("status");
 
   if (id) {
     const record = executionRecords.get(id);
@@ -58,7 +61,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(record);
   }
 
-  // Return recent executions
-  const recent = Array.from(executionRecords.values()).slice(-20).reverse();
+  // Filter by status if requested (e.g. status=pending for Blender add-on polling)
+  let list = Array.from(executionRecords.values());
+  if (statusFilter) {
+    list = list.filter((r) => r.status === statusFilter);
+  }
+
+  const recent = list.slice(-20).reverse();
   return NextResponse.json({ executions: recent });
 }

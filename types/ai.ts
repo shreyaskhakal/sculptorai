@@ -111,6 +111,8 @@ export interface ModelPlanInput {
   complexity?: "simple" | "medium" | "complex" | string;
   includeCode?: boolean;
   context?: string;
+  previousCode?: string;
+  mode?: "create" | "modify";
 }
 
 export interface ImageAnalysisInput {

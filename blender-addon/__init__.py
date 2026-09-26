@@ -22,6 +22,7 @@ classes = (
     operators.SCULPTOR_OT_generate,
     operators.SCULPTOR_OT_approve_and_run,
     operators.SCULPTOR_OT_fix_error,
+    operators.SCULPTOR_OT_fetch_task,
     operators.SCULPTOR_OT_clear,
     panels.VIEW3D_PT_sculptor_ai,
 )
