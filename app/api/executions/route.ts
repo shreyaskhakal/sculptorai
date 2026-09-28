@@ -1,22 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ExecutionCreateSchema } from "@/lib/validation/api";
-
-// In-memory execution store for local dev & sync with add-on
-const executionRecords = new Map<string, {
-  executionId: string;
-  generationId: string;
-  status: "pending" | "running" | "success" | "error";
-  script?: string;
-  stdout?: string;
-  stderr?: string;
-  durationMs?: number;
-  blenderVersion: string;
-  createdAt: string;
-  completedAt?: string;
-}>();
+import { getAuthenticatedUser } from "@/lib/supabase/server-auth";
+import { db } from "@/lib/supabase/db";
+import { validateBlenderScript } from "@/lib/blender/validator";
 
 export async function POST(req: NextRequest) {
   try {
+    const { user, error: authError, statusCode } = await getAuthenticatedUser(req);
+    if (!user) {
+      return NextResponse.json({ error: authError || "Unauthorized" }, { status: statusCode || 401 });
+    }
+
     const body = await req.json();
     const parsed = ExecutionCreateSchema.safeParse(body);
     if (!parsed.success) {
@@ -27,19 +21,35 @@ export async function POST(req: NextRequest) {
     }
 
     const { generationId, blenderVersion, script, prompt } = parsed.data;
-    const executionId = `exec_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
-    const record = {
-      executionId,
+    // Safety validation before accepting execution task
+    if (script) {
+      const validation = validateBlenderScript(script);
+      if (!validation.isValid) {
+        return NextResponse.json(
+          {
+            error: "Generated script failed security validation and cannot be queued for execution.",
+            securityViolations: validation.errors,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Resolve project ID (either passed in body or extracted from generation)
+    const projectId = body.projectId || (await (async () => {
+      const projects = await db.getProjects(user.id);
+      return projects[0]?.id || "proj_default";
+    })());
+
+    const record = await db.createExecution({
       generationId,
-      status: "pending" as const,
-      blenderVersion,
+      projectId,
+      userId: user.id,
+      blenderVersion: blenderVersion || "4.x",
       script: script || "",
       prompt: prompt || "Model Generation",
-      createdAt: new Date().toISOString(),
-    };
-
-    executionRecords.set(executionId, record);
+    });
 
     return NextResponse.json(record, { status: 201 });
   } catch (err: unknown) {
@@ -49,24 +59,33 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const id = searchParams.get("id");
-  const statusFilter = searchParams.get("status");
-
-  if (id) {
-    const record = executionRecords.get(id);
-    if (!record) {
-      return NextResponse.json({ error: "Execution not found" }, { status: 404 });
+  try {
+    const { user, error: authError, statusCode } = await getAuthenticatedUser(req);
+    if (!user) {
+      return NextResponse.json({ error: authError || "Unauthorized" }, { status: statusCode || 401 });
     }
-    return NextResponse.json(record);
-  }
 
-  // Filter by status if requested (e.g. status=pending for Blender add-on polling)
-  let list = Array.from(executionRecords.values());
-  if (statusFilter) {
-    list = list.filter((r) => r.status === statusFilter);
-  }
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get("id");
+    const statusFilter = searchParams.get("status") || undefined;
+    const projectFilter = searchParams.get("projectId") || undefined;
 
-  const recent = list.slice(-20).reverse();
-  return NextResponse.json({ executions: recent });
+    if (id) {
+      const record = await db.getExecutionById(id, user.id);
+      if (!record) {
+        return NextResponse.json({ error: "Execution not found or access denied" }, { status: 404 });
+      }
+      return NextResponse.json(record);
+    }
+
+    const executions = await db.getExecutions(user.id, {
+      status: statusFilter,
+      projectId: projectFilter,
+    });
+
+    return NextResponse.json({ executions });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to fetch executions";
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
 }

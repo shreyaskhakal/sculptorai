@@ -1,4 +1,4 @@
-import { AIProvider } from "@/types/ai";
+import { AIProvider } from "../../types/ai";
 import { GeminiAIProvider } from "./gemini";
 
 let defaultProvider: AIProvider | null = null;
@@ -11,4 +11,4 @@ export function getAIProvider(): AIProvider {
   return defaultProvider;
 }
 
-export { type AIProvider } from "@/types/ai";
+export { type AIProvider } from "../../types/ai";

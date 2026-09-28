@@ -177,7 +177,7 @@ export default function LandingPage() {
             {/* Active Display Window */}
             <div className="mt-4 p-4 rounded-xl bg-[#080A10] border border-[#1C2130] font-mono text-xs">
               <div className="text-[#64718C] text-[11px] mb-1">
-                // Step {activeWorkflowStep + 1} State
+                {"//"} Step {activeWorkflowStep + 1} State
               </div>
               <p className="text-emerald-400 font-semibold">
                 {workflowSteps[activeWorkflowStep].desc}

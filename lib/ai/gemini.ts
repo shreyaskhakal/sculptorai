@@ -8,7 +8,7 @@ import {
   ImageAnalysis,
   BlenderDebugInput,
   DebugResult,
-} from "@/types/ai";
+} from "../../types/ai";
 import {
   SYSTEM_PROMPT_BLENDER_ARCHITECT,
   SYSTEM_PROMPT_IMAGE_ANALYZER,
@@ -19,7 +19,11 @@ import {
   ImageAnalysisSchema,
   BlenderDebugSchema,
 } from "./schemas";
-import { validateBlenderScript } from "@/lib/blender/validator";
+import { validateBlenderScript } from "../blender/validator";
+
+export const GEMINI_MODEL_GENERATION = process.env.GEMINI_MODEL_GENERATION || "gemini-1.5-flash";
+export const GEMINI_MODEL_VISION = process.env.GEMINI_MODEL_VISION || "gemini-1.5-flash";
+export const GEMINI_MODEL_DEBUG = process.env.GEMINI_MODEL_DEBUG || "gemini-1.5-flash";
 
 export class GeminiAIProvider implements AIProvider {
   public name = "Google Gemini";
@@ -56,7 +60,7 @@ export class GeminiAIProvider implements AIProvider {
 
     try {
       const model = this.genAI.getGenerativeModel({
-        model: "gemini-1.5-flash",
+        model: GEMINI_MODEL_GENERATION,
         generationConfig: {
           temperature: 0.2,
           responseMimeType: "application/json",
@@ -124,7 +128,7 @@ Generate the complete JSON modeling plan and executable Blender Python (bpy).
 
     try {
       const model = this.genAI.getGenerativeModel({
-        model: "gemini-1.5-flash",
+        model: GEMINI_MODEL_VISION,
         generationConfig: {
           temperature: 0.2,
           responseMimeType: "application/json",
@@ -179,7 +183,7 @@ Respond with the required JSON structure.
 
     try {
       const model = this.genAI.getGenerativeModel({
-        model: "gemini-1.5-flash",
+        model: GEMINI_MODEL_DEBUG,
         generationConfig: {
           temperature: 0.1,
           responseMimeType: "application/json",

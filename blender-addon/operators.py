@@ -1,6 +1,7 @@
 import bpy
 from .api_client import SculptorApiClient
 from .executor import execute_blender_code
+from .compat import get_blender_version_string
 
 class SculptorProperties(bpy.types.PropertyGroup):
     prompt: bpy.props.StringProperty(
@@ -68,7 +69,7 @@ class SCULPTOR_OT_generate(bpy.types.Operator):
         props.last_status = "Generating..."
         props.last_error = ""
 
-        blender_ver = f"{bpy.app.version[0]}.{bpy.app.version[1]}"
+        blender_ver = get_blender_version_string()
         ok, res = SculptorApiClient.generate(props.prompt, blender_version=blender_ver, context=context)
 
         props.is_busy = False
@@ -95,13 +96,17 @@ class SCULPTOR_OT_approve_and_run(bpy.types.Operator):
         props = context.scene.sculptor_props
         code = props.generated_code
         if not code.strip():
-            self.report({'WARNING'}, "No code available to run. Generate or paste code first.")
+            self.report({'WARNING'}, "No code available to run. Generate or claim a task first.")
             return {'CANCELLED'}
 
         props.is_busy = True
         props.last_status = "Executing in Blender..."
 
-        # Execute code inside Blender runtime
+        # Signal server that execution is running
+        if props.active_execution_id:
+            SculptorApiClient.start_task(props.active_execution_id, context=context)
+
+        # Execute code inside Blender runtime with undo support
         exec_result = execute_blender_code(code)
 
         props.is_busy = False
@@ -109,28 +114,32 @@ class SCULPTOR_OT_approve_and_run(bpy.types.Operator):
             props.last_status = "Execution Successful"
             props.last_error = ""
             self.report({'INFO'}, f"Script executed successfully in {exec_result['duration_ms']}ms.")
-            # Report result to SculptorAI server
-            SculptorApiClient.report_execution_result(
-                props.active_execution_id,
-                status="success",
-                stdout=exec_result["stdout"],
-                stderr="",
-                duration_ms=exec_result["duration_ms"],
-                context=context
-            )
+            
+            # Report real result back to SculptorAI server
+            if props.active_execution_id:
+                SculptorApiClient.report_execution_result(
+                    props.active_execution_id,
+                    status="success",
+                    stdout=exec_result["stdout"],
+                    stderr="",
+                    duration_ms=exec_result["duration_ms"],
+                    context=context
+                )
         else:
             props.last_status = "Execution Error"
             props.last_error = exec_result["error"]
             self.report({'ERROR'}, "Blender execution error encountered.")
-            # Report failure to server
-            SculptorApiClient.report_execution_result(
-                props.active_execution_id,
-                status="error",
-                stdout=exec_result["stdout"],
-                stderr=exec_result["error"],
-                duration_ms=exec_result["duration_ms"],
-                context=context
-            )
+            
+            # Report real failure back to SculptorAI server
+            if props.active_execution_id:
+                SculptorApiClient.report_execution_result(
+                    props.active_execution_id,
+                    status="error",
+                    stdout=exec_result["stdout"],
+                    stderr=exec_result["error"],
+                    duration_ms=exec_result["duration_ms"],
+                    context=context
+                )
 
         return {'FINISHED'}
 
@@ -148,7 +157,7 @@ class SCULPTOR_OT_fix_error(bpy.types.Operator):
         props.is_busy = True
         props.last_status = "Diagnosing with AI..."
 
-        blender_ver = f"{bpy.app.version[0]}.{bpy.app.version[1]}"
+        blender_ver = get_blender_version_string()
         ok, res = SculptorApiClient.debug_error(
             props.last_error,
             props.generated_code,
@@ -182,28 +191,30 @@ class SCULPTOR_OT_clear(bpy.types.Operator):
         props.plan_summary = ""
         props.last_status = "Ready"
         props.last_error = ""
+        props.active_execution_id = ""
         return {'FINISHED'}
 
 class SCULPTOR_OT_fetch_task(bpy.types.Operator):
     bl_idname = "sculptor.fetch_task"
-    bl_label = "Check Web Tasks"
-    bl_description = "Fetch pending execution tasks sent from the SculptorAI web application"
+    bl_label = "Claim Web Task"
+    bl_description = "Atomically claim pending execution task dispatched from the SculptorAI Web Studio"
 
     def execute(self, context):
         props = context.scene.sculptor_props
-        props.last_status = "Polling Web Tasks..."
-        ok, tasks = SculptorApiClient.fetch_pending_tasks(context)
-        if ok and len(tasks) > 0:
-            latest = tasks[0]
-            props.active_execution_id = latest.get("executionId", "")
-            props.generated_code = latest.get("script", "")
-            props.plan_summary = latest.get("prompt", "Task received from Web Studio")
-            props.last_status = "Pending Approval (From Web)"
-            self.report({'INFO'}, f"Received task: {props.plan_summary}")
-        elif ok:
+        props.last_status = "Claiming Web Task..."
+        ok, task = SculptorApiClient.claim_next_task(context)
+
+        if ok and task:
+            props.active_execution_id = task.get("id", "")
+            props.generated_code = task.get("script", "")
+            props.plan_summary = task.get("prompt", "Task claimed from Web Studio")
+            # MANDATORY RULE: Never automatically execute a claimed task. Human must review & approve.
+            props.last_status = "Claimed (Requires User Approval)"
+            self.report({'INFO'}, f"Claimed task: '{props.plan_summary}'. Review code and click Approve & Run.")
+        elif ok and not task:
             props.last_status = "Connected (No Pending Tasks)"
-            self.report({'INFO'}, "No pending execution requests from web.")
+            self.report({'INFO'}, "No pending execution requests in queue.")
         else:
-            props.last_status = "Polling Failed"
-            self.report({'WARNING'}, "Could not poll tasks.")
+            props.last_status = "Claim Failed"
+            self.report({'WARNING'}, "Could not claim task from server.")
         return {'FINISHED'}

@@ -41,6 +41,19 @@ export default function DashboardPage() {
   const { user, signOut, isDemoMode } = useAuth();
 
   const [projects, setProjects] = useState<ProjectItem[]>([]);
+  const [stats, setStats] = useState<{
+    totalProjects: number;
+    totalGenerations: number;
+    successfulExecutions: number;
+    failedExecutions: number;
+    recentGenerations: Array<{ id: string; title: string; projectName: string; status: string; createdAt: string }>;
+  }>({
+    totalProjects: 0,
+    totalGenerations: 0,
+    successfulExecutions: 0,
+    failedExecutions: 0,
+    recentGenerations: [],
+  });
   const [searchTerm, setSearchTerm] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
@@ -48,13 +61,24 @@ export default function DashboardPage() {
   const [newProjectVersion, setNewProjectVersion] = useState("4.x");
   const [isCreating, setIsCreating] = useState(false);
 
-  useEffect(() => {
+  const fetchDashboardData = () => {
     fetch("/api/projects")
       .then((res) => res.json())
       .then((data) => {
         if (data.projects) setProjects(data.projects);
       })
       .catch((err) => console.error("Could not fetch projects:", err));
+
+    fetch("/api/dashboard/stats")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data) setStats(data);
+      })
+      .catch((err) => console.error("Could not fetch stats:", err));
+  };
+
+  useEffect(() => {
+    fetchDashboardData();
   }, []);
 
   const handleCreateProject = async (e: React.FormEvent) => {
@@ -187,9 +211,11 @@ export default function DashboardPage() {
             <div className="p-5 rounded-2xl bg-[#0E111A] border border-[#202638] flex items-center justify-between">
               <div>
                 <span className="text-xs font-medium text-[#7A86A1] uppercase tracking-wider">
-                  Active Generations
+                  Total Generations
                 </span>
-                <h3 className="text-2xl font-bold text-white mt-1">8</h3>
+                <h3 className="text-2xl font-bold text-white mt-1">
+                  {stats.totalGenerations}
+                </h3>
               </div>
               <div className="w-10 h-10 rounded-xl bg-[#00E5FF]/20 text-[#00E5FF] flex items-center justify-center">
                 <Sparkles className="w-5 h-5" />
@@ -201,7 +227,7 @@ export default function DashboardPage() {
                 <span className="text-xs font-medium text-[#7A86A1] uppercase tracking-wider">
                   Blender Target
                 </span>
-                <h3 className="text-2xl font-bold text-white mt-1">4.x / 3.6</h3>
+                <h3 className="text-2xl font-bold text-white mt-1">4.x / 3.6 LTS</h3>
               </div>
               <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
                 <Zap className="w-5 h-5" />
@@ -358,51 +384,38 @@ export default function DashboardPage() {
         {/* Activity Feed */}
         <div>
           <h2 className="text-lg font-bold text-white mb-4">Recent Generations</h2>
-          <div className="rounded-2xl bg-[#0E111A] border border-[#202638] divide-y divide-[#1B202E] overflow-hidden">
-            {[
-              {
-                title: "Cyberpunk desk with RGB underglow and cable management",
-                project: "Cyberpunk Desk Setup",
-                status: "Success",
-                time: "2 hours ago",
-              },
-              {
-                title: "Modular low-poly wooden dining table with 4 legs",
-                project: "Low-Poly Furniture Kit",
-                status: "Success",
-                time: "Yesterday",
-              },
-              {
-                title: "Sci-Fi surveillance drone with camera gimbal and thrusters",
-                project: "Hard-Surface Assets",
-                status: "Success",
-                time: "3 days ago",
-              },
-            ].map((gen, i) => (
-              <div
-                key={i}
-                className="p-4 flex items-center justify-between hover:bg-[#131622] transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-[#181D2B] text-[#00E5FF] flex items-center justify-center">
-                    <FileCode className="w-4 h-4" />
+          {stats.recentGenerations.length > 0 ? (
+            <div className="rounded-2xl bg-[#0E111A] border border-[#202638] divide-y divide-[#1B202E] overflow-hidden">
+              {stats.recentGenerations.map((gen) => (
+                <div
+                  key={gen.id}
+                  className="p-4 flex items-center justify-between hover:bg-[#131622] transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-[#181D2B] text-[#00E5FF] flex items-center justify-center">
+                      <FileCode className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-semibold text-white">
+                        {gen.title}
+                      </h4>
+                      <span className="text-[10px] text-[#6E7B95]">
+                        Project: {gen.projectName} • {formatDate(gen.createdAt)}
+                      </span>
+                    </div>
                   </div>
-                  <div>
-                    <h4 className="text-xs font-semibold text-white">
-                      {gen.title}
-                    </h4>
-                    <span className="text-[10px] text-[#6E7B95]">
-                      Project: {gen.project} • {gen.time}
-                    </span>
-                  </div>
-                </div>
 
-                <Badge variant="emerald" className="text-[10px]">
-                  {gen.status}
-                </Badge>
-              </div>
-            ))}
-          </div>
+                  <Badge variant="emerald" className="text-[10px]">
+                    {gen.status}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="p-8 text-center bg-[#0E111A] border border-[#202638] rounded-2xl text-[#6B7790] text-xs">
+              No recent generations yet. Open a project studio to start generating 3D models.
+            </div>
+          )}
         </div>
       </main>
 

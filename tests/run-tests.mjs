@@ -1,33 +1,52 @@
 import { execSync } from "node:child_process";
+import { testDatabasePersistence } from "./database/persistence.test.mjs";
+import { testExecutionLifecycle } from "./execution/lifecycle.test.mjs";
+import { testEndToEndWorkflow } from "./e2e/end-to-end.test.mjs";
 
 console.log("=================================================");
 console.log("  SCULPTOR AI — MASTER TEST SUITE RUNNER         ");
 console.log("=================================================\n");
 
-try {
-  // 1. Run Unit Code Safety Validator Test
-  execSync("node tests/unit/validator.test.mjs", { stdio: "inherit" });
-  console.log("");
+async function runAllSuites() {
+  try {
+    // 1. Run Unit Code Safety Validator & Bypass Defense Test
+    execSync("node tests/unit/validator.test.mjs", { stdio: "inherit" });
+    console.log("");
 
-  // 2. Run AI Prompt & Structured Schema Test
-  execSync("node tests/ai/generation.test.mjs", { stdio: "inherit" });
-  console.log("");
+    // 2. Run AI Prompt & Structured Schema Test
+    execSync("node tests/ai/generation.test.mjs", { stdio: "inherit" });
+    console.log("");
 
-  // 3. Run API Schemas & Security Sanitization Test
-  execSync("node tests/api/endpoints.test.mjs", { stdio: "inherit" });
-  console.log("");
+    // 3. Run API Schemas & Security Sanitization Test
+    execSync("node tests/api/endpoints.test.mjs", { stdio: "inherit" });
+    console.log("");
 
-  // 4. Run Authorization & User Isolation Test
-  execSync("node tests/security/auth_rls.test.mjs", { stdio: "inherit" });
-  console.log("");
+    // 4. Run Authorization & User Isolation Test
+    execSync("node tests/security/auth_rls.test.mjs", { stdio: "inherit" });
+    console.log("");
 
-  // 5. Run Blender Python Scripts Test
-  execSync("python tests/blender/scripts.test.py", { stdio: "inherit" });
+    // 5. Run Database Persistence & Multi-Tenant Isolation
+    await testDatabasePersistence();
+    console.log("");
 
-  console.log("=================================================");
-  console.log("  ✓ ALL 5 TEST SUITES PASSED 100% CLEANLY!       ");
-  console.log("=================================================");
-} catch (error) {
-  console.error("Test execution failed:", error);
-  process.exit(1);
+    // 6. Run Execution Pipeline Lifecycle & Atomic Claiming
+    await testExecutionLifecycle();
+    console.log("");
+
+    // 7. Run Complete End-to-End Workflow & Error Repair Loop
+    await testEndToEndWorkflow();
+    console.log("");
+
+    // 8. Run Blender Python Scripts Test
+    execSync("python tests/blender/scripts.test.py", { stdio: "inherit" });
+
+    console.log("\n=================================================");
+    console.log("  ✓ ALL 8 TEST SUITES PASSED 100% CLEANLY!       ");
+    console.log("=================================================");
+  } catch (error) {
+    console.error("Test execution failed:", error);
+    process.exit(1);
+  }
 }
+
+runAllSuites();

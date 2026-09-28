@@ -5,19 +5,48 @@ export interface ValidationResult {
   safeToPreview: boolean;
 }
 
-const FORBIDDEN_PATTERNS = [
-  { pattern: /\bimport\s+subprocess\b/i, message: "subprocess module is restricted" },
-  { pattern: /\bfrom\s+subprocess\b/i, message: "subprocess module is restricted" },
-  { pattern: /\bos\.system\b/i, message: "os.system execution is restricted" },
-  { pattern: /\bos\.popen\b/i, message: "os.popen execution is restricted" },
-  { pattern: /\bimport\s+shutil\b/i, message: "shutil file operations should be handled carefully" },
-  { pattern: /\bshutil\.rmtree\b/i, message: "Recursive directory deletion is blocked" },
-  { pattern: /\bimport\s+socket\b/i, message: "Raw socket operations are restricted in generated code" },
-  { pattern: /\bimport\s+urllib\b/i, message: "Direct network fetch in script is restricted" },
-  { pattern: /\bimport\s+requests\b/i, message: "Direct HTTP requests in script are restricted" },
-  { pattern: /\beval\s*\(/i, message: "Dynamic eval execution is flagged" },
-  { pattern: /\bexec\s*\(/i, message: "Dynamic exec execution is flagged" },
-  { pattern: /\bopen\s*\([^,)]+,\s*['"][wa]/i, message: "Arbitrary file write operation detected" },
+interface SecurityRule {
+  pattern: RegExp;
+  category: string;
+  message: string;
+}
+
+const FORBIDDEN_RULES: SecurityRule[] = [
+  // Subprocess and system command execution
+  { pattern: /\bimport\s+subprocess\b/i, category: "execution", message: "subprocess module execution is forbidden" },
+  { pattern: /\bfrom\s+subprocess\b/i, category: "execution", message: "subprocess module execution is forbidden" },
+  { pattern: /\bos\.(system|popen|spawn[lpe]*|exec[lpe]*|fork)\b/i, category: "execution", message: "Low-level OS process execution is forbidden" },
+  { pattern: /\bpty\b/i, category: "execution", message: "Pseudo-terminal allocation is restricted" },
+
+  // Network and socket access
+  { pattern: /\bimport\s+(socket|urllib|requests|http|httpx|aiohttp|ftplib|telnetlib|smtplib)\b/i, category: "network", message: "Network and socket modules are forbidden in generated scripts" },
+  { pattern: /\bfrom\s+(socket|urllib|requests|http|httpx|aiohttp|ftplib|telnetlib|smtplib)\b/i, category: "network", message: "Network requests are forbidden in generated scripts" },
+  { pattern: /\burllib\.(request|parse)\b/i, category: "network", message: "urllib network calls are forbidden" },
+
+  // Filesystem manipulation and destructive operations
+  { pattern: /\bimport\s+shutil\b/i, category: "filesystem", message: "shutil filesystem manipulation is restricted" },
+  { pattern: /\bshutil\.(rmtree|move|copy|copytree|chown)\b/i, category: "filesystem", message: "Destructive shutil operations are forbidden" },
+  { pattern: /\bos\.(remove|unlink|rmdir|rename|replace|chmod|chown)\b/i, category: "filesystem", message: "Destructive OS file system modifications are forbidden" },
+  { pattern: /\b(\w+)\.(unlink|rmdir)\s*\(/i, category: "filesystem", message: "Pathlib destructive file deletion operations are forbidden" },
+  { pattern: /\b(open|io\.open|builtins\.open)\s*\(/i, category: "filesystem", message: "Arbitrary file reading/writing via open() is restricted" },
+
+  // Dynamic code evaluation and reflection bypasses
+  { pattern: /\beval\s*\(/i, category: "dynamic_code", message: "eval() dynamic evaluation is strictly forbidden" },
+  { pattern: /\bexec\s*\(/i, category: "dynamic_code", message: "exec() dynamic execution is strictly forbidden" },
+  { pattern: /\bcompile\s*\(/i, category: "dynamic_code", message: "compile() dynamic code construction is strictly forbidden" },
+  { pattern: /\b__import__\s*\(/i, category: "dynamic_code", message: "Dynamic __import__() is strictly forbidden" },
+  { pattern: /\bimportlib(\.import_module)?\b/i, category: "dynamic_code", message: "importlib dynamic module importing is forbidden" },
+  { pattern: /\b(getattr|setattr|delattr)\s*\(/i, category: "reflection", message: "Dynamic reflection via getattr/setattr is restricted" },
+  { pattern: /\b(globals|locals|vars)\s*\(\s*\)/i, category: "reflection", message: "Scope reflection via globals()/locals() is restricted" },
+  { pattern: /__(subclasses|bases|mro|globals|code)__/i, category: "reflection", message: "Python object model traversal/introspection is forbidden" },
+
+  // Credential and environment harvesting
+  { pattern: /\bos\.(environ|getenv|putenv)\b/i, category: "credentials", message: "Harvesting system environment variables is forbidden" },
+  { pattern: /\b(sys\.)?modules\b/i, category: "reflection", message: "Inspecting or mutating sys.modules is restricted" },
+
+  // Deserialization and unsafe serialization
+  { pattern: /\bimport\s+(pickle|marshal|shelve)\b/i, category: "serialization", message: "Unsafe deserialization modules are forbidden" },
+  { pattern: /\bfrom\s+(pickle|marshal|shelve)\b/i, category: "serialization", message: "Unsafe deserialization modules are forbidden" },
 ];
 
 const BEST_PRACTICE_CHECKS = [
@@ -28,17 +57,17 @@ const BEST_PRACTICE_CHECKS = [
   },
   {
     pattern: /def\s+main\s*\(/,
-    message: "Recommended: wrap execution inside a main() function for modularity",
+    message: "Recommended: wrap modeling instructions inside a main() function for modular execution",
     required: false,
   },
 ];
 
 /**
- * Validates untrusted AI-generated Blender Python code before showing it
- * or allowing user approval.
+ * Hardened validator for untrusted AI-generated Blender Python code.
+ * Fails closed on dangerous, obfuscated, or suspicious constructs.
  * 
- * Note: Static regex/AST checks cannot guarantee 100% safety of arbitrary code.
- * Explicit user review and consent are mandatory before executing in Blender.
+ * NOTE: The validator is a defensive security boundary, NOT a substitute
+ * for explicit human review and approval in Blender.
  */
 export function validateBlenderScript(code: string): ValidationResult {
   const errors: string[] = [];
@@ -53,15 +82,15 @@ export function validateBlenderScript(code: string): ValidationResult {
     };
   }
 
-  // Size limit check (max 100KB for typical generation)
+  // Size limit check (max 100KB for typical procedural generation)
   if (code.length > 100_000) {
     errors.push("Generated script exceeds maximum allowed size (100KB).");
   }
 
   // Check forbidden dangerous patterns
-  for (const { pattern, message } of FORBIDDEN_PATTERNS) {
-    if (pattern.test(code)) {
-      errors.push(`Security Warning: ${message}`);
+  for (const rule of FORBIDDEN_RULES) {
+    if (rule.pattern.test(code)) {
+      errors.push(`[Security Violation - ${rule.category}]: ${rule.message}`);
     }
   }
 
@@ -69,7 +98,7 @@ export function validateBlenderScript(code: string): ValidationResult {
   for (const { pattern, message, required } of BEST_PRACTICE_CHECKS) {
     if (!pattern.test(code)) {
       if (required) {
-        warnings.push(`Best practice: ${message}`);
+        warnings.push(`Required practice: ${message}`);
       } else {
         warnings.push(message);
       }

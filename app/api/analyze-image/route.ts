@@ -2,11 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAIProvider } from "@/lib/ai/adapter";
 import { checkRateLimit } from "@/lib/security/rate-limiter";
 import { sanitizePrompt } from "@/lib/security/sanitize";
+import { getAuthenticatedUser } from "@/lib/supabase/server-auth";
 
 export async function POST(req: NextRequest) {
   try {
-    const ip = req.headers.get("x-forwarded-for") || "anonymous";
-    const rateCheck = checkRateLimit(`img_${ip}`, { maxRequests: 15 });
+    const { user, error: authError, statusCode } = await getAuthenticatedUser(req);
+    if (!user) {
+      return NextResponse.json({ error: authError || "Unauthorized" }, { status: statusCode || 401 });
+    }
+
+    const rateKey = `img_${user.id}`;
+    const rateCheck = checkRateLimit(rateKey, { maxRequests: 15 });
     if (!rateCheck.allowed) {
       return NextResponse.json(
         { error: "Too many image analyses requested. Please wait a moment." },

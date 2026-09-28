@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { ProjectSidebar } from "@/components/projects/ProjectSidebar";
 import { ChatMessage } from "@/components/chat/ChatMessage";
 import { PromptComposer } from "@/components/chat/PromptComposer";
@@ -20,9 +20,11 @@ import {
   CheckCircle2,
   AlertCircle,
   ArrowLeftRight,
+  Radio,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { useAuth } from "@/components/auth/AuthProvider";
 
 interface ChatItem {
   id: string;
@@ -44,67 +46,48 @@ interface GenerationHistoryItem {
   timestamp: string;
 }
 
+interface ProjectData {
+  id: string;
+  name: string;
+  description: string;
+  blenderVersion: string;
+}
+
 export default function WorkspacePage({
   params,
 }: {
   params: { projectId: string };
 }) {
   const { projectId } = params;
+  const { isDemoMode } = useAuth();
 
-  // State
+  // Navigation & Tabs
   const [activeSidebarView, setActiveSidebarView] = useState<
     "chat" | "history" | "assets" | "settings"
   >("chat");
   const [activeRightTab, setActiveRightTab] = useState<
     "code" | "plan" | "execution" | "diff"
   >("code");
-
-  // Mobile layout tab switcher
   const [mobileActiveTab, setMobileActiveTab] = useState<
     "chat" | "plan" | "code" | "execution"
   >("chat");
 
-  const initialCode = `# SculptorAI Generated Script
-import bpy
+  // Project Meta
+  const [project, setProject] = useState<ProjectData | null>(null);
 
-def main():
-    # Safely clear active mesh
-    if bpy.context.active_object and bpy.context.active_object.mode != 'OBJECT':
-        bpy.ops.object.mode_set(mode='OBJECT')
-    bpy.ops.object.select_all(action='DESELECT')
-    for obj in bpy.data.objects:
-        if obj.type == 'MESH':
-            obj.select_set(True)
-    bpy.ops.object.delete(use_global=False)
-
-    # Build futuristic desk surface
-    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0.75))
-    desk = bpy.context.active_object
-    desk.name = "Cyber_Desk_Surface"
-    desk.scale = (1.6, 0.8, 0.05)
-    bpy.ops.object.transform_apply(scale=True)
-
-if __name__ == '__main__':
-    main()
-`;
-
-  const initialPlan: ModelPlan = {
+  // Active Code & Plan
+  const [activeCode, setActiveCode] = useState<string>(
+    `# SculptorAI Generated Script\nimport bpy\n\ndef main():\n    if bpy.context.active_object and bpy.context.active_object.mode != 'OBJECT':\n        bpy.ops.object.mode_set(mode='OBJECT')\n    bpy.ops.object.select_all(action='DESELECT')\n    for obj in bpy.data.objects:\n        if obj.type == 'MESH':\n            obj.select_set(True)\n    bpy.ops.object.delete(use_global=False)\n    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0.75))\n    desk = bpy.context.active_object\n    desk.name = "Cyber_Desk_Surface"\n    desk.scale = (1.6, 0.8, 0.05)\n    bpy.ops.object.transform_apply(scale=True)\n\nif __name__ == '__main__':\n    main()\n`
+  );
+  const [activePlan, setActivePlan] = useState<ModelPlan | null>({
     intent: "create_model",
-    summary:
-      "Modular futuristic gaming desk with beveled chamfers and cable grommets.",
+    summary: "Modular futuristic gaming desk with beveled chamfers and cable grommets.",
     objects: [
       {
         name: "Cyber_Desk_Surface",
         type: "mesh",
         description: "Main workspace surface",
         approxDimensions: { x: 1.6, y: 0.8, z: 0.05 },
-        modifiers: ["Bevel"],
-      },
-      {
-        name: "Dual_Leg_Assembly",
-        type: "mesh",
-        description: "Heavy-duty steel Z-frame legs",
-        approxDimensions: { x: 0.1, y: 0.7, z: 0.75 },
       },
     ],
     steps: [
@@ -123,41 +106,22 @@ if __name__ == '__main__':
     ],
     materials: [
       {
-        name: "MatteBlackSteel",
+        name: "Dark_Matte_Carbon",
         targetObject: "Cyber_Desk_Surface",
         type: "principled_bsdf",
-        baseColor: "#11141A",
         roughness: 0.35,
         metallic: 0.9,
       },
     ],
-    lighting: [
-      {
-        name: "Studio_Key",
-        type: "AREA",
-        energyWatts: 400,
-        position: [2.5, -3.0, 3.5],
-      },
-    ],
-    assumptions: ["Units in meters", "Blender 4.x environment"],
+    lighting: [],
+    camera: undefined,
+    assumptions: ["Units in meters", "Blender 4.x / 3.6 LTS"],
     warnings: [],
-  };
+  });
 
-  const [activeCode, setActiveCode] = useState<string>(initialCode);
-  const [activePlan, setActivePlan] = useState<ModelPlan | null>(initialPlan);
-  const [selectedHistoryVersion, setSelectedHistoryVersion] = useState<GenerationHistoryItem | null>(null);
-
-  const [generationHistory, setGenerationHistory] = useState<GenerationHistoryItem[]>([
-    {
-      id: "gen_base_1",
-      versionNumber: 1,
-      prompt: "Create a futuristic gaming desk with monitor and RGB lighting",
-      code: initialCode,
-      plan: initialPlan,
-      timestamp: "Initial Version",
-    },
-  ]);
-
+  const [selectedHistoryVersion, setSelectedHistoryVersion] =
+    useState<GenerationHistoryItem | null>(null);
+  const [generationHistory, setGenerationHistory] = useState<GenerationHistoryItem[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatItem[]>([
     {
       id: "msg_init",
@@ -171,9 +135,10 @@ if __name__ == '__main__':
   const [loadingStage, setLoadingStage] = useState<string>("");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Execution state
+  // Real Execution State
+  const [activeExecutionId, setActiveExecutionId] = useState<string | null>(null);
   const [executionStatus, setExecutionStatus] = useState<
-    "idle" | "pending" | "running" | "success" | "error"
+    "idle" | "pending" | "claimed" | "running" | "success" | "error" | "cancelled"
   >("idle");
   const [executionStdout, setExecutionStdout] = useState<string | null>(null);
   const [executionStderr, setExecutionStderr] = useState<string | null>(null);
@@ -182,10 +147,129 @@ if __name__ == '__main__':
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3000);
+    setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Handle Prompt Submit (Handles both new creation and scene modification)
+  // 1. Fetch Initial Data (Project, Generations, Messages)
+  useEffect(() => {
+    let isMounted = true;
+
+    // Load Project Details
+    fetch(`/api/projects/${projectId}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (isMounted && data) {
+          setProject(data);
+        }
+      })
+      .catch((err) => console.error("Error loading project:", err));
+
+    // Load Persistent Generations
+    fetch(`/api/projects/${projectId}/generations`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (isMounted && data && Array.isArray(data.generations) && data.generations.length > 0) {
+          const mapped: GenerationHistoryItem[] = data.generations.map((g: any) => ({
+            id: g.id,
+            versionNumber: g.versionNumber,
+            prompt: g.prompt,
+            code: g.code,
+            plan: g.planJson,
+            timestamp: new Date(g.createdAt).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+          }));
+          setGenerationHistory(mapped);
+          if (mapped[0]) {
+            setActiveCode(mapped[0].code);
+            setActivePlan(mapped[0].plan);
+          }
+        }
+      })
+      .catch((err) => console.error("Error loading generations:", err));
+
+    // Load Persistent Chat Messages
+    fetch(`/api/projects/${projectId}/messages`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (isMounted && data && Array.isArray(data.messages) && data.messages.length > 0) {
+          const mapped: ChatItem[] = data.messages.map((m: any) => ({
+            id: m.id,
+            role: m.role,
+            text: m.content?.text || (typeof m.content === "string" ? m.content : ""),
+            plan: m.metadata?.plan,
+            imageUrl: m.imageUrl,
+            createdAt: new Date(m.createdAt).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+          }));
+          setChatMessages(mapped);
+        }
+      })
+      .catch((err) => console.error("Error loading messages:", err));
+
+    return () => {
+      isMounted = false;
+    };
+  }, [projectId]);
+
+  // 2. Real Execution Polling Lifecycle
+  useEffect(() => {
+    if (
+      !activeExecutionId ||
+      executionStatus === "idle" ||
+      executionStatus === "success" ||
+      executionStatus === "error" ||
+      executionStatus === "cancelled"
+    ) {
+      return;
+    }
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/executions?id=${activeExecutionId}`);
+        if (!res.ok) return;
+
+        const data = await res.json();
+        if (data && data.status) {
+          setExecutionStatus(data.status);
+
+          if (data.stdout !== undefined && data.stdout !== null) {
+            setExecutionStdout(data.stdout);
+          }
+          if (data.stderr !== undefined && data.stderr !== null) {
+            setExecutionStderr(data.stderr);
+          }
+          if (data.durationMs !== undefined && data.durationMs !== null) {
+            setExecutionDuration(data.durationMs);
+          }
+
+          if (data.status === "claimed") {
+            showToast("Claimed by Blender! Approve execution in Blender sidebar.");
+          } else if (data.status === "running") {
+            showToast("Blender is executing Python script...");
+          } else if (data.status === "success") {
+            showToast("Blender confirmed execution succeeded!");
+            clearInterval(interval);
+          } else if (data.status === "error") {
+            showToast("Blender reported execution error.");
+            clearInterval(interval);
+          } else if (data.status === "cancelled") {
+            showToast("Execution was cancelled.");
+            clearInterval(interval);
+          }
+        }
+      } catch (err) {
+        console.error("Execution status polling error:", err);
+      }
+    }, 1500);
+
+    return () => clearInterval(interval);
+  }, [activeExecutionId, executionStatus]);
+
+  // 3. Handle Prompt Submit
   const handlePromptSubmit = async (
     prompt: string,
     options: {
@@ -206,7 +290,7 @@ if __name__ == '__main__':
         prompt
       );
 
-    // Add User Message to Chat
+    // Add User Message to Chat and Persist
     const userMsg: ChatItem = {
       id: `usr_${Date.now()}`,
       role: "user",
@@ -218,6 +302,17 @@ if __name__ == '__main__':
     };
     setChatMessages((prev) => [...prev, userMsg]);
     setIsLoading(true);
+
+    // Persist message in background
+    fetch(`/api/projects/${projectId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        role: "user",
+        content: { text: prompt },
+        imageUrl: options.imageBase64 ? `data:image/png;base64,${options.imageBase64}` : undefined,
+      }),
+    }).catch((err) => console.error("Could not persist user message:", err));
 
     try {
       if (options.imageBase64) {
@@ -250,6 +345,17 @@ if __name__ == '__main__':
             setActiveRightTab("code");
           }
           showToast("Reference breakdown generated!");
+
+          // Persist assistant message
+          fetch(`/api/projects/${projectId}/messages`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              role: "assistant",
+              content: { text: assistantMsg.text },
+              metadata: { imageAnalysis: data },
+            }),
+          }).catch(console.error);
         } else {
           throw new Error(data.error || "Image analysis failed");
         }
@@ -258,9 +364,7 @@ if __name__ == '__main__':
         setLoadingStage(
           isModification ? "Analyzing Scene Modification Request" : "Analyzing Request"
         );
-        await new Promise((r) => setTimeout(r, 350));
         setLoadingStage("Creating Procedural Modeling Plan");
-        await new Promise((r) => setTimeout(r, 350));
         setLoadingStage("Generating Verified Blender Python");
 
         const res = await fetch("/api/generate", {
@@ -269,7 +373,7 @@ if __name__ == '__main__':
           body: JSON.stringify({
             projectId,
             prompt,
-            blenderVersion: options.blenderVersion,
+            blenderVersion: options.blenderVersion || project?.blenderVersion || "4.x",
             style: options.style,
             previousCode: isModification ? activeCode : undefined,
             mode: isModification ? "modify" : "create",
@@ -278,10 +382,7 @@ if __name__ == '__main__':
         const data = await res.json();
 
         if (res.ok) {
-          setLoadingStage("Validating Python AST Safety");
-          await new Promise((r) => setTimeout(r, 200));
-
-          const newVersionNum = generationHistory.length + 1;
+          const newVersionNum = data.versionNumber || generationHistory.length + 1;
           const newHistoryItem: GenerationHistoryItem = {
             id: data.generationId || `gen_${Date.now()}`,
             versionNumber: newVersionNum,
@@ -296,17 +397,30 @@ if __name__ == '__main__':
           setActiveCode(data.code.content);
           setActiveRightTab("code");
 
+          const assistantText = isModification
+            ? `Applied modifications: ${data.plan.summary} (Generation #${newVersionNum})`
+            : `${data.plan.summary} (Generation #${newVersionNum})`;
+
           const assistantMsg: ChatItem = {
             id: `ai_${Date.now()}`,
             role: "assistant",
-            text: isModification
-              ? `Applied modifications: ${data.plan.summary} (Generation #${newVersionNum})`
-              : `${data.plan.summary} (Generation #${newVersionNum})`,
+            text: assistantText,
             plan: data.plan,
             createdAt: timestamp,
           };
           setChatMessages((prev) => [...prev, assistantMsg]);
           showToast(`Generation #${newVersionNum} ready!`);
+
+          // Persist assistant message
+          fetch(`/api/projects/${projectId}/messages`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              role: "assistant",
+              content: { text: assistantText },
+              metadata: { plan: data.plan },
+            }),
+          }).catch(console.error);
         } else {
           throw new Error(data.error || "Generation request failed");
         }
@@ -328,70 +442,51 @@ if __name__ == '__main__':
     }
   };
 
-  // Handle Approve & Run in Blender
-  const handleApproveAndRun = async () => {
+  // 4. Handle Real Send to Blender Queue / Approve & Run
+  const handleDispatchExecution = async (autoApproveInUi: boolean = false) => {
     setActiveRightTab("execution");
     setMobileActiveTab("execution");
-    setExecutionStatus("running");
+    setExecutionStatus("pending");
     setExecutionStdout(null);
     setExecutionStderr(null);
+    setExecutionDuration(null);
 
-    // Call execution dispatcher with script payload so the add-on can fetch it
     try {
+      const currentGenId =
+        selectedHistoryVersion?.id || generationHistory[0]?.id || `gen_${Date.now()}`;
+
       const res = await fetch("/api/executions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          generationId: `gen_${Date.now()}`,
-          blenderVersion: "4.x",
+          generationId: currentGenId,
+          projectId,
+          blenderVersion: project?.blenderVersion || "4.x",
           script: activeCode,
           prompt: activePlan?.summary || "Blender scene generation",
         }),
       });
 
-      if (!res.ok) throw new Error("Could not dispatch execution to Blender");
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Could not dispatch execution to Blender");
+      }
 
-      // Simulate local add-on response
-      await new Promise((r) => setTimeout(r, 1100));
-
-      setExecutionStatus("success");
-      setExecutionDuration(290);
-      setExecutionStdout(
-        `[SculptorAI Executor] Scene cleared.\n` +
-          `[SculptorAI Executor] Created meshes and applied bevel/modifiers.\n` +
-          `[SculptorAI Executor] Configured Principled BSDF node trees.\n` +
-          `[SculptorAI Executor] Execution finished successfully.`
-      );
-      showToast("Script executed in Blender!");
+      const execId = data.id || data.executionId;
+      setActiveExecutionId(execId);
+      setExecutionStatus("pending");
+      showToast("Task queued for Blender add-on. Open Blender to claim & run.");
     } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : "Execution failed";
+      const errMsg = err instanceof Error ? err.message : "Execution dispatch failed";
       setExecutionStatus("error");
       setExecutionStderr(errMsg);
     }
   };
 
-  // Handle Send to Blender (Queues for add-on fetch)
-  const handleSendToBlender = async () => {
-    try {
-      const res = await fetch("/api/executions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          generationId: `gen_${Date.now()}`,
-          blenderVersion: "4.x",
-          script: activeCode,
-          prompt: activePlan?.summary || "Blender scene generation",
-        }),
-      });
-      if (res.ok) {
-        showToast("Task queued for Blender add-on! Open Blender sidebar to run.");
-      }
-    } catch (err) {
-      console.error("Queue execution error:", err);
-    }
-  };
+  const handleApproveAndRun = () => handleDispatchExecution(true);
+  const handleSendToBlender = () => handleDispatchExecution(false);
 
-  // Handle Fix with AI
+  // 5. Handle AI Debugging of Real Stderr Traceback
   const handleFixWithAI = async () => {
     if (!executionStderr) return;
     setIsFixing(true);
@@ -402,6 +497,7 @@ if __name__ == '__main__':
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           projectId,
+          blenderVersion: project?.blenderVersion || "4.x",
           error: executionStderr,
           script: activeCode,
         }),
@@ -412,19 +508,34 @@ if __name__ == '__main__':
         setActiveCode(data.correctedCode);
         setActiveRightTab("code");
 
+        const fixExplanation = `AI Diagnosis: ${data.diagnosis.problem}\nWhy: ${data.diagnosis.whyItHappened}\nSuggested Fix: ${data.diagnosis.suggestedFix}\n\nThe corrected code is now loaded in your editor for review. Review it and click "Approve & Run" when ready.`;
+
         setChatMessages((prev) => [
           ...prev,
           {
             id: `dbg_${Date.now()}`,
             role: "assistant",
-            text: `Diagnosis: ${data.diagnosis.problem}\nFix applied: ${data.diagnosis.suggestedFix}\n\nThe corrected script is ready in your Code tab. Review and click 'Approve & Run'.`,
+            text: fixExplanation,
             createdAt: "Just now",
           },
         ]);
-        showToast("Corrected script loaded into Code editor!");
+
+        fetch(`/api/projects/${projectId}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            role: "assistant",
+            content: { text: fixExplanation },
+          }),
+        }).catch(console.error);
+
+        showToast("Corrected script loaded into Code editor! Review before running.");
+      } else {
+        throw new Error(data.error || "AI could not generate fix");
       }
     } catch (err) {
       console.error("AI fix error:", err);
+      showToast("Could not diagnose error automatically.");
     } finally {
       setIsFixing(false);
     }
@@ -448,55 +559,58 @@ if __name__ == '__main__':
         </div>
       )}
 
-      {/* COLUMN 1: Project Sidebar (Desktop) */}
-      <div className="hidden md:flex h-full">
-        <ProjectSidebar
-          projectId={projectId}
-          projectName="Cyberpunk Desk Setup"
-          blenderVersion="4.x"
-          activeView={activeSidebarView}
-          onSelectView={setActiveSidebarView}
-          generationsCount={generationHistory.length}
-        />
-      </div>
+      {/* COLUMN 1: Left Navigation / Project History Sidebar */}
+      <ProjectSidebar
+        projectId={projectId}
+        projectName={project?.name || "Cyberpunk Desk Setup"}
+        blenderVersion={project?.blenderVersion || "4.x"}
+        activeView={activeSidebarView}
+        onSelectView={setActiveSidebarView}
+        generationsCount={generationHistory.length}
+      />
 
-      {/* Main Workspace Container */}
-      <div className="flex-1 flex flex-col md:flex-row h-full min-w-0">
-        {/* SIDEBAR SUBVIEW: History Drawer */}
+      {/* History Drawer View when selected */}
+      <div className="flex-1 flex overflow-hidden">
         {activeSidebarView === "history" && (
-          <div className="w-72 bg-[#0B0E16] border-r border-[#1C212E] flex flex-col h-full z-20">
-            <div className="p-4 border-b border-[#1C212E] flex items-center justify-between">
-              <div className="flex items-center gap-2">
+          <div className="w-80 bg-[#0B0D14] border-r border-[#1C212E] p-4 flex flex-col h-full overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-[#1C212E] mb-4">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-[#7A86A1] flex items-center gap-2">
                 <History className="w-4 h-4 text-[#00E5FF]" />
-                <h3 className="text-xs font-bold text-white">Generation History</h3>
-              </div>
-              <Badge variant="cyan">{generationHistory.length}</Badge>
+                <span>Generation History</span>
+              </h3>
+              <Badge variant="cyan" className="text-[10px]">
+                {generationHistory.length} Versions
+              </Badge>
             </div>
 
-            <div className="flex-1 p-3 overflow-y-auto space-y-2">
+            <div className="space-y-3">
               {generationHistory.map((item) => (
                 <div
                   key={item.id}
-                  className="p-3 rounded-xl bg-[#111420] border border-[#202638] space-y-2"
+                  className="p-3.5 rounded-xl bg-[#10131D] border border-[#20273A] hover:border-[#F5792A]/50 transition-colors space-y-2"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-white">
-                      Generation #{item.versionNumber}
+                    <Badge variant="orange" className="text-[10px]">
+                      v{item.versionNumber}
+                    </Badge>
+                    <span className="text-[10px] text-[#6A768F]">
+                      {item.timestamp}
                     </span>
-                    <span className="text-[10px] text-[#69748D]">{item.timestamp}</span>
                   </div>
-                  <p className="text-[11px] text-[#8C98B2] line-clamp-2">
+
+                  <p className="text-xs text-white font-medium line-clamp-2">
                     {item.prompt}
                   </p>
 
-                  <div className="flex items-center gap-2 pt-1 border-t border-[#1C212E]">
+                  <div className="pt-2 flex items-center gap-2 border-t border-[#191F2F]">
                     <button
                       onClick={() => handleRestoreVersion(item)}
-                      className="inline-flex items-center gap-1 text-[10px] text-[#F5792A] hover:underline font-semibold"
+                      className="inline-flex items-center gap-1 text-[10px] text-[#A2ACBF] hover:text-white transition-colors"
                     >
                       <RotateCcw className="w-3 h-3" />
                       <span>Restore</span>
                     </button>
+
                     <button
                       onClick={() => {
                         setSelectedHistoryVersion(item);
@@ -525,17 +639,23 @@ if __name__ == '__main__':
             <div className="flex items-center gap-2.5">
               <span className="w-2.5 h-2.5 rounded-full bg-[#F5792A] shadow-glow-orange" />
               <h1 className="text-sm font-semibold text-white">
-                SculptorAI Copilot Studio
+                {project?.name || "SculptorAI Copilot Studio"}
               </h1>
               <Badge variant="orange" className="text-[10px] font-mono">
-                Blender 4.x
+                Blender {project?.blenderVersion || "4.x / 3.6 LTS"}
               </Badge>
+              {isDemoMode && (
+                <Badge variant="cyan" className="text-[10px]">
+                  Demo Mode
+                </Badge>
+              )}
             </div>
 
             <div className="flex items-center gap-2">
-              <Badge variant="emerald" className="text-[10px]">
-                Add-on Online
-              </Badge>
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#131622] border border-[#212638] text-[11px] text-[#CCD2E3]">
+                <Radio className="w-3 h-3 text-emerald-400 animate-pulse" />
+                <span>Blender Pipeline Ready</span>
+              </div>
             </div>
           </header>
 
@@ -554,7 +674,7 @@ if __name__ == '__main__':
                 onUseCode={(code) => {
                   setActiveCode(code);
                   setActiveRightTab("code");
-                  showToast("Blockout script loaded in editor");
+                  showToast("Script loaded in editor");
                 }}
               />
             ))}
@@ -619,6 +739,12 @@ if __name__ == '__main__':
                 {executionStatus === "error" && (
                   <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
                 )}
+                {executionStatus === "claimed" && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#00E5FF] animate-ping" />
+                )}
+                {executionStatus === "pending" && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-spin" />
+                )}
               </button>
 
               {selectedHistoryVersion && (
@@ -643,15 +769,17 @@ if __name__ == '__main__':
                   variant="secondary"
                   onClick={handleSendToBlender}
                   className="text-xs text-[#00E5FF] border-[#00E5FF]/30 hover:border-[#00E5FF]"
+                  title="Queue task for Blender add-on"
                 >
                   <Send className="w-3 h-3" />
-                  <span>Send</span>
+                  <span>Send to Blender</span>
                 </Button>
                 <Button
                   size="sm"
                   variant="primary"
                   onClick={handleApproveAndRun}
                   className="text-xs font-semibold px-3 shadow-glow-orange"
+                  title="Approve and queue task for execution"
                 >
                   <span>Approve & Run</span>
                 </Button>
@@ -670,13 +798,13 @@ if __name__ == '__main__':
                     "Refine scene geometry with smoother bevels and organized vertex groups",
                     {
                       style: "low-poly",
-                      blenderVersion: "4.x",
+                      blenderVersion: project?.blenderVersion || "4.x",
                     }
                   )
                 }
                 onSendToBlender={handleSendToBlender}
                 onApproveAndRun={handleApproveAndRun}
-                isExecuting={executionStatus === "running"}
+                isExecuting={executionStatus === "running" || executionStatus === "pending"}
               />
             )}
 
@@ -711,7 +839,7 @@ if __name__ == '__main__':
         </div>
       </div>
 
-      {/* MOBILE BOTTOM NAVIGATION BAR (Section 21 Responsive requirement) */}
+      {/* MOBILE BOTTOM NAVIGATION BAR */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 bg-[#0E111A] border-t border-[#1E2333] flex items-center justify-around py-2 z-40">
         <button
           onClick={() => setMobileActiveTab("chat")}

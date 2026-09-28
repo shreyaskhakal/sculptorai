@@ -2,11 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { DebugRequestSchema } from "@/lib/validation/api";
 import { getAIProvider } from "@/lib/ai/adapter";
 import { checkRateLimit } from "@/lib/security/rate-limiter";
+import { getAuthenticatedUser } from "@/lib/supabase/server-auth";
+import { validateBlenderScript } from "@/lib/blender/validator";
 
 export async function POST(req: NextRequest) {
   try {
-    const ip = req.headers.get("x-forwarded-for") || "anonymous";
-    const rateCheck = checkRateLimit(`dbg_${ip}`, { maxRequests: 25 });
+    const { user, error: authError, statusCode } = await getAuthenticatedUser(req);
+    if (!user) {
+      return NextResponse.json({ error: authError || "Unauthorized" }, { status: statusCode || 401 });
+    }
+
+    const rateKey = `dbg_${user.id}`;
+    const rateCheck = checkRateLimit(rateKey, { maxRequests: 25 });
     if (!rateCheck.allowed) {
       return NextResponse.json(
         { error: "Too many debugging requests. Please wait a moment." },
@@ -32,11 +39,16 @@ export async function POST(req: NextRequest) {
       blenderVersion,
     });
 
+    // Validate the corrected script safety before returning to user
+    const safetyCheck = validateBlenderScript(result.correctedCode);
+
     return NextResponse.json({
       debugId: result.debugId,
       diagnosis: result.diagnosis,
       changes: result.changes,
       correctedCode: result.correctedCode,
+      safetyWarnings: safetyCheck.warnings,
+      safeToPreview: safetyCheck.safeToPreview,
     });
   } catch (error: unknown) {
     const errMessage = error instanceof Error ? error.message : "Debug analysis failure";

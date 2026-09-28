@@ -2,6 +2,7 @@ import json
 import urllib.request
 import urllib.error
 from .auth import get_api_url, get_auth_headers
+from .compat import get_blender_version_string
 
 class SculptorApiClient:
     @staticmethod
@@ -21,7 +22,10 @@ class SculptorApiClient:
             return False, {"error": str(e)}
 
     @staticmethod
-    def generate(prompt, blender_version="4.x", context=None):
+    def generate(prompt, blender_version=None, context=None):
+        if blender_version is None:
+            blender_version = get_blender_version_string()
+
         base_url = get_api_url(context)
         url = f"{base_url}/api/generate"
         headers = get_auth_headers(context)
@@ -30,7 +34,7 @@ class SculptorApiClient:
             "projectId": "blender_addon_session",
             "prompt": prompt,
             "blenderVersion": blender_version,
-            "includeCode": true_bool := True,
+            "includeCode": True,
             "style": "low-poly",
             "complexity": "medium"
         }
@@ -39,7 +43,7 @@ class SculptorApiClient:
         req = urllib.request.Request(url, data=req_data, headers=headers, method="POST")
         
         try:
-            with urllib.request.urlopen(req, timeout=30) as response:
+            with urllib.request.urlopen(req, timeout=35) as response:
                 data = json.loads(response.read().decode('utf-8'))
                 return True, data
         except urllib.error.HTTPError as e:
@@ -53,7 +57,10 @@ class SculptorApiClient:
             return False, {"error": str(e)}
 
     @staticmethod
-    def debug_error(error_traceback, script, blender_version="4.x", context=None):
+    def debug_error(error_traceback, script, blender_version=None, context=None):
+        if blender_version is None:
+            blender_version = get_blender_version_string()
+
         base_url = get_api_url(context)
         url = f"{base_url}/api/debug"
         headers = get_auth_headers(context)
@@ -69,7 +76,71 @@ class SculptorApiClient:
         req = urllib.request.Request(url, data=req_data, headers=headers, method="POST")
         
         try:
-            with urllib.request.urlopen(req, timeout=30) as response:
+            with urllib.request.urlopen(req, timeout=35) as response:
+                data = json.loads(response.read().decode('utf-8'))
+                return True, data
+        except Exception as e:
+            return False, {"error": str(e)}
+
+    @staticmethod
+    def claim_next_task(context=None):
+        """
+        Atomically claims the oldest pending execution task from the server.
+        """
+        base_url = get_api_url(context)
+        url = f"{base_url}/api/executions/claim-next"
+        headers = get_auth_headers(context)
+        
+        payload = {
+            "blenderVersion": get_blender_version_string()
+        }
+        req_data = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(url, data=req_data, headers=headers, method="POST")
+        
+        try:
+            with urllib.request.urlopen(req, timeout=10) as response:
+                data = json.loads(response.read().decode('utf-8'))
+                task = data.get("task")
+                return True, task
+        except Exception as e:
+            return False, {"error": str(e)}
+
+    @staticmethod
+    def claim_task_by_id(execution_id, context=None):
+        """
+        Atomically claims a specific execution task by its ID.
+        """
+        base_url = get_api_url(context)
+        url = f"{base_url}/api/executions/{execution_id}/claim"
+        headers = get_auth_headers(context)
+        
+        payload = {
+            "blenderVersion": get_blender_version_string()
+        }
+        req_data = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(url, data=req_data, headers=headers, method="POST")
+        
+        try:
+            with urllib.request.urlopen(req, timeout=10) as response:
+                data = json.loads(response.read().decode('utf-8'))
+                return True, data.get("execution")
+        except Exception as e:
+            return False, {"error": str(e)}
+
+    @staticmethod
+    def start_task(execution_id, context=None):
+        """
+        Signals that Blender is actively running the script.
+        """
+        if not execution_id:
+            return True, {}
+        base_url = get_api_url(context)
+        url = f"{base_url}/api/executions/{execution_id}/start"
+        headers = get_auth_headers(context)
+        
+        req = urllib.request.Request(url, data=b"{}", headers=headers, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=10) as response:
                 data = json.loads(response.read().decode('utf-8'))
                 return True, data
         except Exception as e:
@@ -77,6 +148,9 @@ class SculptorApiClient:
 
     @staticmethod
     def report_execution_result(execution_id, status, stdout, stderr, duration_ms, context=None):
+        """
+        Reports true execution results (status, logs, timing, version) back to the server.
+        """
         if not execution_id:
             return True, {}
         base_url = get_api_url(context)
@@ -87,28 +161,16 @@ class SculptorApiClient:
             "status": status,
             "stdout": stdout,
             "stderr": stderr,
-            "durationMs": duration_ms
+            "durationMs": duration_ms,
+            "blenderVersion": get_blender_version_string(),
         }
         
         req_data = json.dumps(payload).encode('utf-8')
         req = urllib.request.Request(url, data=req_data, headers=headers, method="POST")
         
         try:
-            with urllib.request.urlopen(req, timeout=10) as response:
+            with urllib.request.urlopen(req, timeout=15) as response:
                 data = json.loads(response.read().decode('utf-8'))
                 return True, data
-        except Exception as e:
-            return False, {"error": str(e)}
-
-    @staticmethod
-    def fetch_pending_tasks(context=None):
-        base_url = get_api_url(context)
-        url = f"{base_url}/api/executions?status=pending"
-        headers = get_auth_headers(context)
-        req = urllib.request.Request(url, headers=headers, method="GET")
-        try:
-            with urllib.request.urlopen(req, timeout=8) as response:
-                data = json.loads(response.read().decode('utf-8'))
-                return True, data.get("executions", [])
         except Exception as e:
             return False, {"error": str(e)}

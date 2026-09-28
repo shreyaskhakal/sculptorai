@@ -1,30 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getAuthenticatedUser } from "@/lib/supabase/server-auth";
+import { db } from "@/lib/supabase/db";
 
 export async function GET(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const { id } = params;
+  try {
+    const { user, error, statusCode } = await getAuthenticatedUser(req);
+    if (!user) {
+      return NextResponse.json({ error: error || "Unauthorized" }, { status: statusCode || 401 });
+    }
 
-  return NextResponse.json({
-    projectId: id,
-    generations: [
-      {
-        id: "gen_sample_1",
-        projectId: id,
-        prompt: "Create a low-poly wooden table with 4 legs and beveled corners",
-        status: "completed",
-        createdAt: new Date(Date.now() - 3600000 * 5).toISOString(),
-        summary: "Low-poly 4-legged wooden table with chamfered edges",
-      },
-      {
-        id: "gen_sample_2",
-        projectId: id,
-        prompt: "Add a monitor stand and cable grommet to the desk surface",
-        status: "completed",
-        createdAt: new Date(Date.now() - 3600000 * 2).toISOString(),
-        summary: "Monitor riser shelf with cylindrical grommet cutout",
-      },
-    ],
-  });
+    const { id } = params;
+    const project = await db.getProjectById(id, user.id);
+    if (!project) {
+      return NextResponse.json({ error: "Project not found or access denied" }, { status: 404 });
+    }
+
+    const generations = await db.getGenerations(id, user.id);
+
+    return NextResponse.json({
+      projectId: id,
+      generations,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to retrieve generations";
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
 }

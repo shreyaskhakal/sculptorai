@@ -2,11 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { checkRateLimit } from "@/lib/security/rate-limiter";
 import { sanitizeFilename } from "@/lib/security/sanitize";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getAuthenticatedUser } from "@/lib/supabase/server-auth";
 
 export async function POST(req: NextRequest) {
   try {
-    const ip = req.headers.get("x-forwarded-for") || "anonymous";
-    const rateCheck = checkRateLimit(`upload_${ip}`, { maxRequests: 20 });
+    const { user, error: authError, statusCode } = await getAuthenticatedUser(req);
+    if (!user) {
+      return NextResponse.json({ error: authError || "Unauthorized" }, { status: statusCode || 401 });
+    }
+
+    const rateCheck = checkRateLimit(`upload_${user.id}`, { maxRequests: 20 });
     if (!rateCheck.allowed) {
       return NextResponse.json(
         { error: "Too many uploads. Please wait a moment." },
@@ -42,7 +47,7 @@ export async function POST(req: NextRequest) {
     }
 
     const safeName = `${Date.now()}_${sanitizeFilename(file.name)}`;
-    const storagePath = `${projectId}/${safeName}`;
+    const storagePath = `${user.id}/${projectId}/${safeName}`;
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
@@ -59,30 +64,31 @@ export async function POST(req: NextRequest) {
         });
 
       if (!uploadError) {
-        const { data: signedData } = await supabase.storage
+        const { data: publicUrlData } = supabase.storage
           .from(bucket)
-          .createSignedUrl(storagePath, 3600 * 24); // 24hr signed URL
-
-        url = signedData?.signedUrl || "";
+          .getPublicUrl(storagePath);
+        url = publicUrlData.publicUrl;
+      } else {
+        // Fallback data URI for local dev if bucket not provisioned
+        url = `data:${file.type};base64,${buffer.toString("base64")}`;
       }
     } catch {
-      // Fallback to local Data URI if Supabase bucket isn't reachable
-    }
-
-    if (!url) {
       url = `data:${file.type};base64,${buffer.toString("base64")}`;
     }
 
     return NextResponse.json({
-      success: true,
-      storagePath,
       url,
+      storagePath,
+      name: file.name,
+      size: file.size,
       mimeType: file.type,
-      sizeBytes: file.size,
     });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : "Upload error";
-    console.error("[Upload API Error]:", error);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    const errMessage = error instanceof Error ? error.message : "Upload failure";
+    console.error("[API Upload Error]:", error);
+    return NextResponse.json(
+      { error: errMessage },
+      { status: 500 }
+    );
   }
 }

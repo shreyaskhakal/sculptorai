@@ -3,11 +3,18 @@ import { GenerateRequestSchema } from "@/lib/validation/api";
 import { getAIProvider } from "@/lib/ai/adapter";
 import { checkRateLimit } from "@/lib/security/rate-limiter";
 import { sanitizePrompt } from "@/lib/security/sanitize";
+import { getAuthenticatedUser } from "@/lib/supabase/server-auth";
+import { db } from "@/lib/supabase/db";
 
 export async function POST(req: NextRequest) {
   try {
-    const ip = req.headers.get("x-forwarded-for") || "anonymous";
-    const rateCheck = checkRateLimit(`gen_${ip}`, { maxRequests: 30 });
+    const { user, error: authError, statusCode } = await getAuthenticatedUser(req);
+    if (!user) {
+      return NextResponse.json({ error: authError || "Unauthorized" }, { status: statusCode || 401 });
+    }
+
+    const rateKey = `gen_${user.id}`;
+    const rateCheck = checkRateLimit(rateKey, { maxRequests: 30 });
     if (!rateCheck.allowed) {
       return NextResponse.json(
         { error: "Too many requests. Please wait a moment before generating again." },
@@ -24,8 +31,30 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { projectId, prompt, blenderVersion, style, complexity, previousCode, mode } = parsed.data;
+    let { projectId, prompt, blenderVersion, style, complexity, previousCode, mode } = parsed.data;
     const sanitized = sanitizePrompt(prompt);
+
+    // Resolve or create project if sent from direct add-on session
+    let project = await db.getProjectById(projectId, user.id);
+    if (!project) {
+      // Check if user has any existing projects, or create a default session project
+      const userProjects = await db.getProjects(user.id);
+      if (userProjects.length > 0) {
+        project = userProjects[0];
+        projectId = project.id;
+      } else {
+        project = await db.createProject({
+          userId: user.id,
+          name: "Blender AI Project",
+          description: "Workspace created from AI Copilot",
+          blenderVersion,
+        });
+        projectId = project.id;
+      }
+    }
+
+    const existingGenerations = await db.getGenerations(projectId, user.id);
+    const nextVersion = existingGenerations.length + 1;
 
     const ai = getAIProvider();
     const result = await ai.generateModelPlan({
@@ -38,16 +67,29 @@ export async function POST(req: NextRequest) {
       mode,
     });
 
-    const generationId = `gen_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    // Persist generation to Supabase / database
+    const savedGeneration = await db.createGeneration({
+      projectId,
+      userId: user.id,
+      versionNumber: nextVersion,
+      prompt: sanitized,
+      mode,
+      style,
+      complexity,
+      planJson: result.plan,
+      code: result.code.content,
+      warnings: result.warnings,
+    });
 
     return NextResponse.json({
-      generationId,
-      projectId,
+      generationId: savedGeneration.id,
+      projectId: savedGeneration.projectId,
+      versionNumber: savedGeneration.versionNumber,
       status: "completed",
       plan: result.plan,
       code: result.code,
       warnings: result.warnings,
-      createdAt: new Date().toISOString(),
+      createdAt: savedGeneration.createdAt,
     });
   } catch (error: unknown) {
     const errMessage = error instanceof Error ? error.message : "Internal generation error";
