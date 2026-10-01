@@ -106,3 +106,65 @@ export const BlenderDebugSchema = z.object({
 });
 
 export type BlenderDebugParsed = z.infer<typeof BlenderDebugSchema>;
+
+export const PatchOperationSchema = z.object({
+  type: z.enum([
+    "create_object",
+    "delete_object",
+    "duplicate_object",
+    "rename_object",
+    "transform_object",
+    "modify_mesh",
+    "modify_material",
+    "add_modifier",
+    "remove_modifier",
+    "modify_modifier",
+    "create_collection",
+    "move_object",
+    "create_light",
+    "modify_light",
+    "create_camera",
+    "modify_camera",
+  ]),
+  target: z.string().optional(),
+  name: z.string().optional(),
+  changes: z.record(z.any()).optional().default({}),
+  description: z.string().optional(),
+});
+
+export const ScenePatchSchema = z.object({
+  summary: z.string(),
+  operations: z.array(PatchOperationSchema).default([]),
+  blenderCode: z.string().default(""),
+  estimatedComplexity: z.enum(["low", "medium", "high"]).default("low"),
+  affectedObjects: z.array(z.string()).default([]),
+});
+
+export type ScenePatchParsed = z.infer<typeof ScenePatchSchema>;
+
+export const TaskNodeSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  description: z.string(),
+  dependencies: z.array(z.string()).default([]),
+  status: z.enum([
+    "pending",
+    "planned",
+    "validated",
+    "approved",
+    "running",
+    "success",
+    "failed",
+    "cancelled",
+  ]).default("planned"),
+  targetObject: z.string().optional(),
+});
+
+export const TaskGraphSchema = z.object({
+  goal: z.string(),
+  tasks: z.array(TaskNodeSchema).default([]),
+  estimatedTimeSeconds: z.number().default(30),
+});
+
+export type TaskGraphParsed = z.infer<typeof TaskGraphSchema>;
+
