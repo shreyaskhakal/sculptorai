@@ -73,6 +73,72 @@ export interface DBExecutionEvent {
   createdAt: string;
 }
 
+export interface DBBlenderDevice {
+  id: string;
+  userId: string;
+  deviceId: string;
+  deviceName?: string;
+  blenderVersion: string;
+  addonVersion: string;
+  status: "CONNECTED" | "IDLE" | "BUSY" | "EXECUTING" | "ERROR" | "OFFLINE";
+  currentProjectId?: string | null;
+  currentExecutionId?: string | null;
+  lastSeen: string;
+  createdAt: string;
+}
+
+export interface DBSceneSnapshot {
+  id: string;
+  projectId: string;
+  userId: string;
+  sceneName: string;
+  blenderVersion: string;
+  snapshotJson: any;
+  createdAt: string;
+}
+
+export interface DBGenerationVersion {
+  id: string;
+  projectId: string;
+  generationId?: string | null;
+  userId: string;
+  versionNumber: number;
+  prompt: string;
+  code: string;
+  planJson: any;
+  parentVersionId?: string | null;
+  glbUrl?: string | null;
+  snapshotJson?: any | null;
+  createdAt: string;
+}
+
+export interface DBTemplate {
+  id: string;
+  title: string;
+  description: string;
+  category: "Furniture" | "Architecture" | "Game Assets" | "Product Design" | "Characters" | "Other";
+  difficulty: "Beginner" | "Intermediate" | "Advanced";
+  tags: string[];
+  thumbnailUrl?: string;
+  startingPrompt: string;
+  starterCode: string;
+  starterPlan: any;
+  isOfficial: boolean;
+  createdAt: string;
+}
+
+export interface DBAiUsage {
+  id: string;
+  userId: string;
+  projectId?: string | null;
+  model: string;
+  operationType: string;
+  promptTokens: number;
+  completionTokens: number;
+  estimatedCostUsd: number;
+  createdAt: string;
+}
+
 // ==============================================================================
 // In-Memory Fallback Data Store (Partitioned strictly by userId for isolation)
 // ==============================================================================
@@ -517,6 +583,266 @@ class FallbackDataStore {
       successfulExecutions: successExecs,
       failedExecutions: errorExecs,
       recentGenerations,
+    };
+  }
+
+  // Blender Devices & Heartbeat
+  private devices: DBBlenderDevice[] = [];
+
+  recordHeartbeat(data: {
+    userId: string;
+    deviceId: string;
+    deviceName?: string;
+    blenderVersion?: string;
+    addonVersion?: string;
+    status: string;
+    currentProjectId?: string;
+    currentExecutionId?: string;
+  }): DBBlenderDevice {
+    const existingIdx = this.devices.findIndex(
+      (d) => d.userId === data.userId && d.deviceId === data.deviceId
+    );
+    const now = new Date().toISOString();
+    const device: DBBlenderDevice = {
+      id: existingIdx >= 0 ? this.devices[existingIdx].id : `dev_${Date.now()}`,
+      userId: data.userId,
+      deviceId: data.deviceId,
+      deviceName: data.deviceName || "Blender Workstation",
+      blenderVersion: data.blenderVersion || "4.x",
+      addonVersion: data.addonVersion || "1.1.0",
+      status: (data.status as any) || "IDLE",
+      currentProjectId: data.currentProjectId || null,
+      currentExecutionId: data.currentExecutionId || null,
+      lastSeen: now,
+      createdAt: existingIdx >= 0 ? this.devices[existingIdx].createdAt : now,
+    };
+
+    if (existingIdx >= 0) {
+      this.devices[existingIdx] = device;
+    } else {
+      this.devices.push(device);
+    }
+    return device;
+  }
+
+  getDeviceStatus(userId: string): {
+    status: "CONNECTED" | "IDLE" | "BUSY" | "EXECUTING" | "ERROR" | "OFFLINE";
+    device: DBBlenderDevice | null;
+  } {
+    const userDevices = this.devices
+      .filter((d) => d.userId === userId)
+      .sort((a, b) => new Date(b.lastSeen).getTime() - new Date(a.lastSeen).getTime());
+
+    if (userDevices.length === 0) {
+      return { status: "OFFLINE", device: null };
+    }
+
+    const latest = userDevices[0];
+    const diffMs = Date.now() - new Date(latest.lastSeen).getTime();
+
+    // Consider device offline if no heartbeat within 45 seconds
+    if (diffMs > 45000) {
+      return { status: "OFFLINE", device: { ...latest, status: "OFFLINE" } };
+    }
+
+    return { status: latest.status, device: latest };
+  }
+
+  // Scene Snapshots
+  private snapshots: DBSceneSnapshot[] = [];
+
+  saveSnapshot(data: {
+    userId: string;
+    projectId: string;
+    sceneName?: string;
+    blenderVersion?: string;
+    snapshot: any;
+  }): DBSceneSnapshot {
+    const record: DBSceneSnapshot = {
+      id: `snap_${Date.now()}`,
+      projectId: data.projectId,
+      userId: data.userId,
+      sceneName: data.sceneName || "Scene",
+      blenderVersion: data.blenderVersion || "4.x",
+      snapshotJson: data.snapshot,
+      createdAt: new Date().toISOString(),
+    };
+    this.snapshots.push(record);
+    return record;
+  }
+
+  getLatestSnapshot(projectId: string, userId: string): DBSceneSnapshot | null {
+    const list = this.snapshots
+      .filter((s) => s.projectId === projectId && s.userId === userId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return list[0] || null;
+  }
+
+  // Generation Versions
+  private versions: DBGenerationVersion[] = [];
+
+  saveVersion(data: {
+    userId: string;
+    projectId: string;
+    generationId?: string;
+    versionNumber: number;
+    prompt: string;
+    code: string;
+    planJson: any;
+    parentVersionId?: string;
+    glbUrl?: string;
+    snapshotJson?: any;
+  }): DBGenerationVersion {
+    const record: DBGenerationVersion = {
+      id: `ver_${Date.now()}_${data.versionNumber}`,
+      projectId: data.projectId,
+      generationId: data.generationId || null,
+      userId: data.userId,
+      versionNumber: data.versionNumber,
+      prompt: data.prompt,
+      code: data.code,
+      planJson: data.planJson,
+      parentVersionId: data.parentVersionId || null,
+      glbUrl: data.glbUrl || null,
+      snapshotJson: data.snapshotJson || null,
+      createdAt: new Date().toISOString(),
+    };
+    this.versions.push(record);
+    return record;
+  }
+
+  getVersions(projectId: string, userId: string): DBGenerationVersion[] {
+    return this.versions
+      .filter((v) => v.projectId === projectId && v.userId === userId)
+      .sort((a, b) => b.versionNumber - a.versionNumber);
+  }
+
+  // Templates
+  private templates: DBTemplate[] = [
+    {
+      id: "tpl_gaming_desk",
+      title: "Modular Cyberpunk Desk",
+      description: "Clean dual-level gaming desk with cable trays and monitor riser",
+      category: "Furniture",
+      difficulty: "Beginner",
+      tags: ["desk", "gaming", "workspace", "furniture"],
+      startingPrompt: "Create a modern futuristic gaming desk with monitor riser and cable management grommets",
+      starterCode: `import bpy\n\ndef main():\n    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0.75))\n    desk = bpy.context.active_object\n    desk.name = "Gaming_Desk"\n    desk.scale = (1.6, 0.8, 0.05)\n    bpy.ops.object.transform_apply(scale=True)\n\nif __name__ == '__main__':\n    main()`,
+      starterPlan: { summary: "Modular gaming desk baseline", objects: [{ name: "Gaming_Desk", type: "mesh" }] },
+      isOfficial: true,
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: "tpl_ergo_chair",
+      title: "Ergonomic Task Chair",
+      description: "Contoured mesh office chair with lumbar curve and star caster base",
+      category: "Furniture",
+      difficulty: "Intermediate",
+      tags: ["chair", "office", "ergonomic"],
+      startingPrompt: "Create an ergonomic office chair with contoured seat and star caster base",
+      starterCode: `import bpy\n\ndef main():\n    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0.5))\n    seat = bpy.context.active_object\n    seat.name = "Chair_Seat"\n    seat.scale = (0.5, 0.5, 0.05)\n    bpy.ops.object.transform_apply(scale=True)\n\nif __name__ == '__main__':\n    main()`,
+      starterPlan: { summary: "Ergonomic chair geometry", objects: [{ name: "Chair_Seat", type: "mesh" }] },
+      isOfficial: true,
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: "tpl_sci_fi_corridor",
+      title: "Sci-Fi Modular Corridor",
+      description: "Atmospheric bulkhead archway with recessed floor grates and wall conduits",
+      category: "Architecture",
+      difficulty: "Advanced",
+      tags: ["architecture", "sci-fi", "modular", "environment"],
+      startingPrompt: "Create a modular sci-fi hallway segment with octagonal bulkhead arch and wall conduits",
+      starterCode: `import bpy\n\ndef main():\n    bpy.ops.mesh.primitive_cylinder_add(vertices=8, radius=2.0, depth=3.0, location=(0, 0, 1.5))\n    arch = bpy.context.active_object\n    arch.name = "Corridor_Arch"\n\nif __name__ == '__main__':\n    main()`,
+      starterPlan: { summary: "Modular octagonal sci-fi corridor arch", objects: [{ name: "Corridor_Arch", type: "mesh" }] },
+      isOfficial: true,
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: "tpl_hover_vehicle",
+      title: "Cyberpunk Hover Speeder",
+      description: "Aerodynamic low-poly hover vehicle with twin side turbines and cockpit canopy",
+      category: "Game Assets",
+      difficulty: "Intermediate",
+      tags: ["vehicle", "cyberpunk", "speed", "game asset"],
+      startingPrompt: "Create an aerodynamic cyberpunk hover vehicle with twin thrusters and angular cockpit",
+      starterCode: `import bpy\n\ndef main():\n    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0.4))\n    body = bpy.context.active_object\n    body.name = "Speeder_Body"\n    body.scale = (2.2, 0.9, 0.4)\n    bpy.ops.object.transform_apply(scale=True)\n\nif __name__ == '__main__':\n    main()`,
+      starterPlan: { summary: "Low-poly hover vehicle chassis", objects: [{ name: "Speeder_Body", type: "mesh" }] },
+      isOfficial: true,
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: "tpl_headphones",
+      title: "Studio Over-Ear Headphones",
+      description: "Industrial design audio headset with cushioned headband and gimbal earcups",
+      category: "Product Design",
+      difficulty: "Intermediate",
+      tags: ["product", "audio", "industrial design"],
+      startingPrompt: "Create modern over-ear studio headphones with curved headband and circular earcups",
+      starterCode: `import bpy\n\ndef main():\n    bpy.ops.mesh.primitive_torus_add(major_radius=0.15, minor_radius=0.015, location=(0, 0, 0.2))\n    band = bpy.context.active_object\n    band.name = "Headband"\n\nif __name__ == '__main__':\n    main()`,
+      starterPlan: { summary: "Over-ear headphone chassis", objects: [{ name: "Headband", type: "mesh" }] },
+      isOfficial: true,
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: "tpl_lowpoly_robot",
+      title: "Articulated Low-Poly Robot",
+      description: "Charming mechanical companion droid with spherical torso and visor eye",
+      category: "Characters",
+      difficulty: "Beginner",
+      tags: ["character", "robot", "low-poly", "droid"],
+      startingPrompt: "Create a cute low-poly companion robot with spherical body and glowing visor",
+      starterCode: `import bpy\n\ndef main():\n    bpy.ops.mesh.primitive_uv_sphere_add(radius=0.5, location=(0, 0, 1.0))\n    bot = bpy.context.active_object\n    bot.name = "Companion_Droid"\n\nif __name__ == '__main__':\n    main()`,
+      starterPlan: { summary: "Companion droid mesh", objects: [{ name: "Companion_Droid", type: "mesh" }] },
+      isOfficial: true,
+      createdAt: new Date().toISOString(),
+    }
+  ];
+
+  getTemplates(category?: string): DBTemplate[] {
+    if (!category || category === "All") return this.templates;
+    return this.templates.filter((t) => t.category.toLowerCase() === category.toLowerCase());
+  }
+
+  // AI Usage
+  private aiUsages: DBAiUsage[] = [];
+
+  trackAiUsage(data: {
+    userId: string;
+    projectId?: string;
+    model: string;
+    operationType: string;
+    promptTokens: number;
+    completionTokens: number;
+    estimatedCostUsd: number;
+  }): DBAiUsage {
+    const record: DBAiUsage = {
+      id: `usage_${Date.now()}`,
+      userId: data.userId,
+      projectId: data.projectId || null,
+      model: data.model,
+      operationType: data.operationType,
+      promptTokens: data.promptTokens,
+      completionTokens: data.completionTokens,
+      estimatedCostUsd: data.estimatedCostUsd,
+      createdAt: new Date().toISOString(),
+    };
+    this.aiUsages.push(record);
+    return record;
+  }
+
+  getAiUsageSummary(userId: string) {
+    const userEvents = this.aiUsages.filter((u) => u.userId === userId);
+    const totalPromptTokens = userEvents.reduce((acc, u) => acc + u.promptTokens, 0);
+    const totalCompletionTokens = userEvents.reduce((acc, u) => acc + u.completionTokens, 0);
+    const totalCostUsd = userEvents.reduce((acc, u) => acc + Number(u.estimatedCostUsd), 0);
+
+    return {
+      totalGenerations: userEvents.filter((u) => u.operationType === "generation").length,
+      totalImageAnalyses: userEvents.filter((u) => u.operationType === "vision").length,
+      totalTokens: totalPromptTokens + totalCompletionTokens,
+      totalCostUsd: Number(totalCostUsd.toFixed(4)),
+      events: userEvents.slice(-20),
     };
   }
 }
@@ -1371,4 +1697,367 @@ export const db = {
       return fallbackStore.getDashboardStats(userId);
     }
   },
+
+  // Blender Devices & Heartbeat
+  async recordBlenderHeartbeat(data: {
+    userId: string;
+    deviceId: string;
+    deviceName?: string;
+    blenderVersion?: string;
+    addonVersion?: string;
+    status: string;
+    currentProjectId?: string;
+    currentExecutionId?: string;
+  }): Promise<DBBlenderDevice> {
+    if (!isSupabaseConfigured()) return fallbackStore.recordHeartbeat(data);
+
+    try {
+      const supabase = createAdminClient();
+      const now = new Date().toISOString();
+      const { data: upserted, error } = await supabase
+        .from("blender_devices")
+        .upsert(
+          {
+            user_id: data.userId,
+            device_id: data.deviceId,
+            device_name: data.deviceName || "Blender Workstation",
+            blender_version: data.blenderVersion || "4.x",
+            addon_version: data.addonVersion || "1.1.0",
+            status: data.status || "IDLE",
+            current_project_id: data.currentProjectId || null,
+            current_execution_id: data.currentExecutionId || null,
+            last_seen: now,
+          },
+          { onConflict: "user_id,device_id" }
+        )
+        .select()
+        .single();
+
+      if (error || !upserted) return fallbackStore.recordHeartbeat(data);
+
+      return {
+        id: upserted.id,
+        userId: upserted.user_id,
+        deviceId: upserted.device_id,
+        deviceName: upserted.device_name,
+        blenderVersion: upserted.blender_version,
+        addonVersion: upserted.addon_version,
+        status: upserted.status,
+        currentProjectId: upserted.current_project_id,
+        currentExecutionId: upserted.current_execution_id,
+        lastSeen: upserted.last_seen,
+        createdAt: upserted.created_at,
+      };
+    } catch {
+      return fallbackStore.recordHeartbeat(data);
+    }
+  },
+
+  async getBlenderDeviceStatus(userId: string): Promise<{
+    status: "CONNECTED" | "IDLE" | "BUSY" | "EXECUTING" | "ERROR" | "OFFLINE";
+    device: DBBlenderDevice | null;
+  }> {
+    if (!isSupabaseConfigured()) return fallbackStore.getDeviceStatus(userId);
+
+    try {
+      const supabase = createAdminClient();
+      const { data, error } = await supabase
+        .from("blender_devices")
+        .select("*")
+        .eq("user_id", userId)
+        .order("last_seen", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error || !data) return fallbackStore.getDeviceStatus(userId);
+
+      const diffMs = Date.now() - new Date(data.last_seen).getTime();
+      const status = diffMs > 45000 ? "OFFLINE" : data.status;
+
+      const device: DBBlenderDevice = {
+        id: data.id,
+        userId: data.user_id,
+        deviceId: data.device_id,
+        deviceName: data.device_name,
+        blenderVersion: data.blender_version,
+        addonVersion: data.addon_version,
+        status,
+        currentProjectId: data.current_project_id,
+        currentExecutionId: data.current_execution_id,
+        lastSeen: data.last_seen,
+        createdAt: data.created_at,
+      };
+
+      return { status, device };
+    } catch {
+      return fallbackStore.getDeviceStatus(userId);
+    }
+  },
+
+  // Scene Snapshots
+  async saveSceneSnapshot(data: {
+    userId: string;
+    projectId: string;
+    sceneName?: string;
+    blenderVersion?: string;
+    snapshot: any;
+  }): Promise<DBSceneSnapshot> {
+    if (!isSupabaseConfigured()) return fallbackStore.saveSnapshot(data);
+
+    try {
+      const supabase = createAdminClient();
+      const { data: created, error } = await supabase
+        .from("scene_snapshots")
+        .insert({
+          user_id: data.userId,
+          project_id: data.projectId,
+          scene_name: data.sceneName || "Scene",
+          blender_version: data.blenderVersion || "4.x",
+          snapshot_json: data.snapshot,
+        })
+        .select()
+        .single();
+
+      if (error || !created) return fallbackStore.saveSnapshot(data);
+
+      return {
+        id: created.id,
+        projectId: created.project_id,
+        userId: created.user_id,
+        sceneName: created.scene_name,
+        blenderVersion: created.blender_version,
+        snapshotJson: created.snapshot_json,
+        createdAt: created.created_at,
+      };
+    } catch {
+      return fallbackStore.saveSnapshot(data);
+    }
+  },
+
+  async getLatestSceneSnapshot(projectId: string, userId: string): Promise<DBSceneSnapshot | null> {
+    if (!isSupabaseConfigured()) return fallbackStore.getLatestSnapshot(projectId, userId);
+
+    try {
+      const supabase = createAdminClient();
+      const { data, error } = await supabase
+        .from("scene_snapshots")
+        .select("*")
+        .eq("project_id", projectId)
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error || !data) return fallbackStore.getLatestSnapshot(projectId, userId);
+
+      return {
+        id: data.id,
+        projectId: data.project_id,
+        userId: data.user_id,
+        sceneName: data.scene_name,
+        blenderVersion: data.blender_version,
+        snapshotJson: data.snapshot_json,
+        createdAt: data.created_at,
+      };
+    } catch {
+      return fallbackStore.getLatestSnapshot(projectId, userId);
+    }
+  },
+
+  // Generation Versions
+  async saveGenerationVersion(data: {
+    userId: string;
+    projectId: string;
+    generationId?: string;
+    versionNumber: number;
+    prompt: string;
+    code: string;
+    planJson: any;
+    parentVersionId?: string;
+    glbUrl?: string;
+    snapshotJson?: any;
+  }): Promise<DBGenerationVersion> {
+    if (!isSupabaseConfigured()) return fallbackStore.saveVersion(data);
+
+    try {
+      const supabase = createAdminClient();
+      const { data: created, error } = await supabase
+        .from("generation_versions")
+        .insert({
+          user_id: data.userId,
+          project_id: data.projectId,
+          generation_id: data.generationId || null,
+          version_number: data.versionNumber,
+          prompt: data.prompt,
+          code: data.code,
+          plan_json: data.planJson,
+          parent_version_id: data.parentVersionId || null,
+          glb_url: data.glbUrl || null,
+          snapshot_json: data.snapshotJson || null,
+        })
+        .select()
+        .single();
+
+      if (error || !created) return fallbackStore.saveVersion(data);
+
+      return {
+        id: created.id,
+        projectId: created.project_id,
+        generationId: created.generation_id,
+        userId: created.user_id,
+        versionNumber: created.version_number,
+        prompt: created.prompt,
+        code: created.code,
+        planJson: created.plan_json,
+        parentVersionId: created.parent_version_id,
+        glbUrl: created.glb_url,
+        snapshotJson: created.snapshot_json,
+        createdAt: created.created_at,
+      };
+    } catch {
+      return fallbackStore.saveVersion(data);
+    }
+  },
+
+  async getGenerationVersions(projectId: string, userId: string): Promise<DBGenerationVersion[]> {
+    if (!isSupabaseConfigured()) return fallbackStore.getVersions(projectId, userId);
+
+    try {
+      const supabase = createAdminClient();
+      const { data, error } = await supabase
+        .from("generation_versions")
+        .select("*")
+        .eq("project_id", projectId)
+        .eq("user_id", userId)
+        .order("version_number", { ascending: false });
+
+      if (error || !data) return fallbackStore.getVersions(projectId, userId);
+
+      return data.map((v: any) => ({
+        id: v.id,
+        projectId: v.project_id,
+        generationId: v.generation_id,
+        userId: v.user_id,
+        versionNumber: v.version_number,
+        prompt: v.prompt,
+        code: v.code,
+        planJson: v.plan_json,
+        parentVersionId: v.parent_version_id,
+        glbUrl: v.glb_url,
+        snapshotJson: v.snapshot_json,
+        createdAt: v.created_at,
+      }));
+    } catch {
+      return fallbackStore.getVersions(projectId, userId);
+    }
+  },
+
+  // Templates
+  async getTemplates(category?: string): Promise<DBTemplate[]> {
+    if (!isSupabaseConfigured()) return fallbackStore.getTemplates(category);
+
+    try {
+      const supabase = createAdminClient();
+      let query = supabase.from("templates").select("*");
+      if (category && category !== "All") {
+        query = query.ilike("category", category);
+      }
+      const { data, error } = await query.order("title", { ascending: true });
+
+      if (error || !data || data.length === 0) return fallbackStore.getTemplates(category);
+
+      return data.map((t: any) => ({
+        id: t.id,
+        title: t.title,
+        description: t.description,
+        category: t.category,
+        difficulty: t.difficulty,
+        tags: t.tags || [],
+        thumbnailUrl: t.thumbnail_url,
+        startingPrompt: t.starting_prompt,
+        starterCode: t.starter_code,
+        starterPlan: t.starter_plan,
+        isOfficial: t.is_official,
+        createdAt: t.created_at,
+      }));
+    } catch {
+      return fallbackStore.getTemplates(category);
+    }
+  },
+
+  // AI Usage
+  async trackAiUsage(data: {
+    userId: string;
+    projectId?: string;
+    model: string;
+    operationType: string;
+    promptTokens: number;
+    completionTokens: number;
+    estimatedCostUsd: number;
+  }): Promise<DBAiUsage> {
+    if (!isSupabaseConfigured()) return fallbackStore.trackAiUsage(data);
+
+    try {
+      const supabase = createAdminClient();
+      const { data: created, error } = await supabase
+        .from("ai_usage")
+        .insert({
+          user_id: data.userId,
+          project_id: data.projectId || null,
+          model: data.model,
+          operation_type: data.operationType,
+          prompt_tokens: data.promptTokens,
+          completion_tokens: data.completionTokens,
+          estimated_cost_usd: data.estimatedCostUsd,
+        })
+        .select()
+        .single();
+
+      if (error || !created) return fallbackStore.trackAiUsage(data);
+
+      return {
+        id: created.id,
+        userId: created.user_id,
+        projectId: created.project_id,
+        model: created.model,
+        operationType: created.operation_type,
+        promptTokens: created.prompt_tokens,
+        completionTokens: created.completion_tokens,
+        estimatedCostUsd: created.estimated_cost_usd,
+        createdAt: created.created_at,
+      };
+    } catch {
+      return fallbackStore.trackAiUsage(data);
+    }
+  },
+
+  async getAiUsageSummary(userId: string) {
+    if (!isSupabaseConfigured()) return fallbackStore.getAiUsageSummary(userId);
+
+    try {
+      const supabase = createAdminClient();
+      const { data, error } = await supabase
+        .from("ai_usage")
+        .select("*")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false });
+
+      if (error || !data) return fallbackStore.getAiUsageSummary(userId);
+
+      const totalPromptTokens = data.reduce((acc, u) => acc + (u.prompt_tokens || 0), 0);
+      const totalCompletionTokens = data.reduce((acc, u) => acc + (u.completion_tokens || 0), 0);
+      const totalCostUsd = data.reduce((acc, u) => acc + Number(u.estimated_cost_usd || 0), 0);
+
+      return {
+        totalGenerations: data.filter((u) => u.operation_type === "generation").length,
+        totalImageAnalyses: data.filter((u) => u.operation_type === "vision").length,
+        totalTokens: totalPromptTokens + totalCompletionTokens,
+        totalCostUsd: Number(totalCostUsd.toFixed(4)),
+        events: data.slice(0, 20),
+      };
+    } catch {
+      return fallbackStore.getAiUsageSummary(userId);
+    }
+  },
 };
+

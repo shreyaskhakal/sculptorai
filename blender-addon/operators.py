@@ -35,6 +35,17 @@ class SculptorProperties(bpy.types.PropertyGroup):
         name="Execution ID",
         default="",
     )
+    active_project_id: bpy.props.StringProperty(
+        name="Project ID",
+        description="Currently active SculptorAI project ID",
+        default="default_project",
+    )
+    auto_heartbeat: bpy.props.BoolProperty(
+        name="Auto Heartbeat",
+        description="Automatically report connection and status to SculptorAI Studio",
+        default=True,
+    )
+
 
 class SCULPTOR_OT_test_connection(bpy.types.Operator):
     bl_idname = "sculptor.test_connection"
@@ -218,3 +229,131 @@ class SCULPTOR_OT_fetch_task(bpy.types.Operator):
             props.last_status = "Claim Failed"
             self.report({'WARNING'}, "Could not claim task from server.")
         return {'FINISHED'}
+
+def extract_compact_scene_snapshot(context):
+    """
+    Extracts a lightweight (<10KB) representation of the active Blender scene.
+    """
+    objects_data = []
+    for obj in bpy.data.objects:
+        if obj.hide_viewport:
+            continue
+        dim = [round(v, 3) for v in obj.dimensions] if hasattr(obj, "dimensions") else [0, 0, 0]
+        obj_info = {
+            "name": obj.name,
+            "type": obj.type,
+            "location": [round(v, 3) for v in obj.location],
+            "rotation": [round(v, 3) for v in obj.rotation_euler],
+            "scale": [round(v, 3) for v in obj.scale],
+            "dimensions": dim,
+            "materials": [slot.material.name for slot in obj.material_slots if slot.material],
+            "modifiers": [m.type for m in obj.modifiers],
+            "collection": obj.users_collection[0].name if obj.users_collection else "Scene Collection"
+        }
+        objects_data.append(obj_info)
+
+    return {
+        "sceneName": context.scene.name,
+        "blenderVersion": get_blender_version_string(),
+        "objects": objects_data,
+        "activeObject": context.active_object.name if context.active_object else None,
+        "selectedObjects": [o.name for o in context.selected_objects],
+        "cameras": [o.name for o in bpy.data.objects if o.type == 'CAMERA'],
+        "lights": [o.name for o in bpy.data.objects if o.type == 'LIGHT'],
+        "collections": [c.name for c in bpy.data.collections]
+    }
+
+class SCULPTOR_OT_send_snapshot(bpy.types.Operator):
+    bl_idname = "sculptor.send_snapshot"
+    bl_label = "Send Scene Snapshot"
+    bl_description = "Capture and send compact scene hierarchy to SculptorAI Studio for scene-aware AI editing"
+
+    def execute(self, context):
+        props = context.scene.sculptor_props
+        props.last_status = "Capturing Scene..."
+
+        snapshot = extract_compact_scene_snapshot(context)
+        project_id = props.active_project_id or "default_project"
+
+        ok, res = SculptorApiClient.send_snapshot(project_id, snapshot, context=context)
+        if ok:
+            props.last_status = "Scene Snapshot Synced"
+            self.report({'INFO'}, f"Synced snapshot ({len(snapshot['objects'])} objects) to SculptorAI.")
+        else:
+            props.last_status = "Snapshot Sync Failed"
+            props.last_error = res.get("error", "Failed to send scene snapshot")
+            self.report({'WARNING'}, f"Snapshot failed: {props.last_error}")
+
+        return {'FINISHED'}
+
+class SCULPTOR_OT_send_heartbeat(bpy.types.Operator):
+    bl_idname = "sculptor.send_heartbeat"
+    bl_label = "Send Heartbeat"
+    bl_description = "Ping the SculptorAI server to report active connection and workstation status"
+
+    def execute(self, context):
+        props = context.scene.sculptor_props
+        status = "BUSY" if props.is_busy else "IDLE"
+        ok, res = SculptorApiClient.send_heartbeat(
+            status=status,
+            current_project=props.active_project_id,
+            current_execution=props.active_execution_id,
+            context=context
+        )
+        if ok:
+            props.last_status = "Connected"
+            self.report({'INFO'}, "Heartbeat acknowledged by server.")
+        else:
+            props.last_status = "Heartbeat Failed"
+            self.report({'WARNING'}, "Server unreachable for heartbeat.")
+        return {'FINISHED'}
+
+class SCULPTOR_OT_export_glb(bpy.types.Operator):
+    bl_idname = "sculptor.export_glb"
+    bl_label = "Export GLB Preview"
+    bl_description = "Export active scene as binary GLTF/GLB for web preview in SculptorAI Studio"
+
+    def execute(self, context):
+        props = context.scene.sculptor_props
+        import tempfile
+        import os
+
+        temp_dir = tempfile.gettempdir()
+        glb_path = os.path.join(temp_dir, f"sculptor_preview_{props.active_project_id}.glb")
+
+        try:
+            # Export scene via Blender built-in gltf operator
+            bpy.ops.export_scene.gltf(
+                filepath=glb_path,
+                export_format='GLB',
+                use_selection=False,
+                export_apply=True
+            )
+            props.last_status = "GLB Exported Successfully"
+            self.report({'INFO'}, f"Preview exported: {glb_path}")
+        except Exception as e:
+            props.last_status = "GLB Export Failed"
+            props.last_error = str(e)
+            self.report({'ERROR'}, f"GLB export failed: {str(e)}")
+
+        return {'FINISHED'}
+
+def sculptor_heartbeat_timer():
+    """
+    Background timer invoked periodically by Blender's application timer loop.
+    """
+    try:
+        # Check if scene context is available
+        if bpy.context and hasattr(bpy.context, "scene") and hasattr(bpy.context.scene, "sculptor_props"):
+            props = bpy.context.scene.sculptor_props
+            if props.auto_heartbeat:
+                status = "BUSY" if props.is_busy else "IDLE"
+                SculptorApiClient.send_heartbeat(
+                    status=status,
+                    current_project=props.active_project_id,
+                    current_execution=props.active_execution_id,
+                )
+    except Exception:
+        pass
+    return 20.0  # Run every 20 seconds
+

@@ -174,3 +174,65 @@ class SculptorApiClient:
                 return True, data
         except Exception as e:
             return False, {"error": str(e)}
+
+    @staticmethod
+    def send_heartbeat(status="IDLE", device_id=None, device_name=None, current_project=None, current_execution=None, context=None):
+        """
+        Sends periodic heartbeat to the SculptorAI server to report device status.
+        """
+        import platform
+        base_url = get_api_url(context)
+        url = f"{base_url}/api/blender/heartbeat"
+        headers = get_auth_headers(context)
+
+        if not device_id:
+            device_id = f"blender_{platform.node() or 'workstation'}"
+        if not device_name:
+            device_name = f"Blender {get_blender_version_string()} ({platform.system()})"
+
+        payload = {
+            "deviceId": device_id,
+            "deviceName": device_name,
+            "blenderVersion": get_blender_version_string(),
+            "addonVersion": "1.1.0",
+            "status": status,
+            "currentProjectId": current_project,
+            "currentExecutionId": current_execution,
+        }
+
+        req_data = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(url, data=req_data, headers=headers, method="POST")
+
+        try:
+            with urllib.request.urlopen(req, timeout=5) as response:
+                data = json.loads(response.read().decode('utf-8'))
+                return True, data
+        except Exception as e:
+            return False, {"error": str(e)}
+
+    @staticmethod
+    def send_snapshot(project_id, snapshot_data, context=None):
+        """
+        Transmits compact scene snapshot (<10KB) to the server for scene-aware AI.
+        """
+        base_url = get_api_url(context)
+        url = f"{base_url}/api/blender/snapshot"
+        headers = get_auth_headers(context)
+
+        payload = {
+            "projectId": project_id,
+            "sceneName": snapshot_data.get("sceneName", "Scene"),
+            "blenderVersion": get_blender_version_string(),
+            "snapshot": snapshot_data,
+        }
+
+        req_data = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(url, data=req_data, headers=headers, method="POST")
+
+        try:
+            with urllib.request.urlopen(req, timeout=10) as response:
+                data = json.loads(response.read().decode('utf-8'))
+                return True, data
+        except Exception as e:
+            return False, {"error": str(e)}
+
