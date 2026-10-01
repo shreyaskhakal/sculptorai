@@ -77,7 +77,7 @@ Generate the surgical scene modification JSON operations and executable Blender 
   };
 }
 
-function generateFallbackPatch(input: SceneEditInput): {
+export function generateFallbackPatch(input: SceneEditInput): {
   patch: ScenePatch;
   code: GeneratedCode;
   warnings: string[];

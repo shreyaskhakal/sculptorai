@@ -6,8 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "test": "jiti tests/run-tests.mjs"
+    "test": "jiti tests/run-tests.mjs",
+    "test:evals": "jiti tests/ai-evals/runner.mjs"
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",

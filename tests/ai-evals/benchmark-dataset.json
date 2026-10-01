@@ -1,0 +1,58 @@
+[
+  { "id": "furn_01", "category": "furniture", "prompt": "Create a modern Scandinavian oak dining table with beveled rounded edges and angled tapered legs." },
+  { "id": "furn_02", "category": "furniture", "prompt": "Model an ergonomic mesh office chair with five-point star caster base, curved lumbar support, and adjustable armrests." },
+  { "id": "furn_03", "category": "furniture", "prompt": "Build a minimalist dual-motor motorized standing desk with cable grommet and chamfered desktop." },
+  { "id": "furn_04", "category": "furniture", "prompt": "Design a mid-century modern credenza sideboard with four slatted sliding doors and brass tapered hairpin legs." },
+  { "id": "furn_05", "category": "furniture", "prompt": "Create an industrial steel and reclaimed timber bookshelf with 5 tiers and X-brace back support." },
+  { "id": "furn_06", "category": "furniture", "prompt": "Model a low-poly Japanese tatami floor platform bed with floating side ledges and integrated headboard." },
+  { "id": "furn_07", "category": "furniture", "prompt": "Build a velvet upholstered barrel accent lounge chair with brass circular plinth base." },
+  { "id": "furn_08", "category": "furniture", "prompt": "Create a round marble top bistro table with cast-iron fluted central pedestal." },
+
+  { "id": "arch_01", "category": "architecture", "prompt": "Model a brutalist concrete villa facade with cantilevered balconies, recessed floor-to-ceiling glass windows, and board-formed textures." },
+  { "id": "arch_02", "category": "architecture", "prompt": "Generate a modern spiral helical staircase with floating oak treads and continuous curved glass balustrade." },
+  { "id": "arch_03", "category": "architecture", "prompt": "Build an open-plan warehouse loft interior with exposed brick walls, overhead steel I-beams, and polished concrete flooring." },
+  { "id": "arch_04", "category": "architecture", "prompt": "Create an arched Gothic stone window frame with trefoil tracery and deep beveled mullions." },
+  { "id": "arch_05", "category": "architecture", "prompt": "Model a Scandinavian A-frame cabin in snowy terrain with front glass gable wall and wraparound wooden deck." },
+  { "id": "arch_06", "category": "architecture", "prompt": "Design a futuristic pavilion with organic parametric canopy supported by branching tree-like columns." },
+  { "id": "arch_07", "category": "architecture", "prompt": "Generate a modular shipping container home with external steel staircase and solar roof trellis." },
+
+  { "id": "prod_01", "category": "product_design", "prompt": "Model a matte ceramic coffee dripper mug with ergonomic hollow handle, ribbed interior extraction channels, and studio backdrop." },
+  { "id": "prod_02", "category": "product_design", "prompt": "Design a wireless earbuds charging case with magnetic clamshell lid, pebble curvature, USB-C port cutout, and front LED indicator." },
+  { "id": "prod_03", "category": "product_design", "prompt": "Create a 75% mechanical keyboard with CNC aluminum high-profile case, rotary volume encoder knob, and sculpted keycaps." },
+  { "id": "prod_04", "category": "product_design", "prompt": "Model a studio large-diaphragm condenser microphone with cylindrical metal mesh basket, shock mount ring, and XLR base connector." },
+  { "id": "prod_05", "category": "product_design", "prompt": "Build an architectural luxury perfume bottle with thick glass bottom, faceted chamfers, and brushed gold magnetic cap." },
+  { "id": "prod_06", "category": "product_design", "prompt": "Design an over-ear audiophile headphone with memory foam earcups, aluminum gimbal yolks, and braided audio cable." },
+  { "id": "prod_07", "category": "product_design", "prompt": "Model an electric pour-over gooseneck kettle with precision spout, angled handle, and flat inductive base plate." },
+  { "id": "prod_08", "category": "product_design", "prompt": "Create a minimalist analog wristwatch with domed sapphire crystal, recessed sub-dials, and stitched leather strap." },
+
+  { "id": "game_01", "category": "game_assets", "prompt": "Create a low-poly fantasy health potion bottle with glass cork stopper, bubbling liquid core, and leather strap harness." },
+  { "id": "game_02", "category": "game_assets", "prompt": "Model a medieval stylized wooden treasure chest with curved reinforced iron bands, heavy padlock, and metal rivet studs." },
+  { "id": "game_03", "category": "game_assets", "prompt": "Design a sci-fi energy shield projector canister with hexagonal honeycomb emissive vents and deployable tripod legs." },
+  { "id": "game_04", "category": "game_assets", "prompt": "Build a dungeon stone wall torch sconce with wrought iron cage, stone mount bracket, and procedural fire emitter empty." },
+  { "id": "game_05", "category": "game_assets", "prompt": "Create a stylized glowing mana crystal cluster sprouting from jagged obsidian rock formation." },
+  { "id": "game_06", "category": "game_assets", "prompt": "Model a post-apocalyptic rusted oil barrel with dented side panels and radioactive hazard warning emblem." },
+  { "id": "game_07", "category": "game_assets", "prompt": "Design a modular sci-fi corridor blast door with diagonal caution stripes and hydraulic wall piston arms." },
+
+  { "id": "mat_01", "category": "materials", "prompt": "Configure an anisotropic brushed brass shader material with subtle radial milling grooves and warm metallic sheen." },
+  { "id": "mat_02", "category": "materials", "prompt": "Create a frosted sea-glass bottle material with high transmission, subsurface scattering tint, and rough surface micro-facets." },
+  { "id": "mat_03", "category": "materials", "prompt": "Setup a distressed leather armchair material with color variation, procedural creasing bump, and soft specular falloff." },
+  { "id": "mat_04", "category": "materials", "prompt": "Build a dark twill weave carbon fiber material with dual-layer clearcoat gloss and anisotropic reflection orientation." },
+  { "id": "mat_05", "category": "materials", "prompt": "Create a vibrant neon glow gas tubing material with intense emission and warm atmospheric light halo." },
+
+  { "id": "light_01", "category": "lighting", "prompt": "Setup a cinematic three-point studio lighting rig with key area light at 45 degrees, soft warm fill light, and crisp blue rim backlight." },
+  { "id": "light_02", "category": "lighting", "prompt": "Configure high-contrast film-noir lighting with a single high-power spotlight beaming through Venetian blind window gobos." },
+  { "id": "light_03", "category": "lighting", "prompt": "Create an outdoor golden hour lighting setup with warm 2800K low-angle sunlight and deep soft sky ambient fill." },
+  { "id": "light_04", "category": "lighting", "prompt": "Build a moody cyberpunk alleyway lighting scheme with alternating cyan and magenta point lights and wet road specular reflections." },
+
+  { "id": "mod_01", "category": "scene_editing", "prompt": "Make the table legs 20% thinner and scale down the foot caps by 15%." },
+  { "id": "mod_02", "category": "scene_editing", "prompt": "Add two pull-out utility drawers with recessed metal handles underneath the existing desktop." },
+  { "id": "mod_03", "category": "scene_editing", "prompt": "Change all wooden furniture materials from blonde oak to dark oiled walnut with 0.4 roughness." },
+  { "id": "mod_04", "category": "scene_editing", "prompt": "Add a dynamic RGB neon light strip along the back bevel edge of the main desk." },
+  { "id": "mod_05", "category": "scene_editing", "prompt": "Delete the temporary alignment cylinder and move the monitor stand 10 centimeters forward on the Y axis." },
+  { "id": "mod_06", "category": "scene_editing", "prompt": "Apply a Bevel modifier with 3 segments and 0.015m width to all sharp tabletop edges." },
+
+  { "id": "dbg_01", "category": "error_recovery", "prompt": "Fix Blender script error: AttributeError: 'NoneType' object has no attribute 'data' when referencing bpy.context.active_object" },
+  { "id": "dbg_02", "category": "error_recovery", "prompt": "Fix Blender operator poll error: RuntimeError: Operator bpy.ops.mesh.bevel.poll() failed, context is incorrect" },
+  { "id": "dbg_03", "category": "error_recovery", "prompt": "Fix material assign error: IndexError: list index out of range when accessing obj.data.materials[0]" },
+  { "id": "dbg_04", "category": "error_recovery", "prompt": "Fix modifier order error: ValueError: Cannot apply Boolean modifier before Subsurf modifier on mesh with active vertex groups" }
+]
