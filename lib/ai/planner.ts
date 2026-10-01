@@ -45,11 +45,12 @@ Decompose this into an ordered, dependency-aware task graph.
   return {
     graphId: `graph_${Date.now()}`,
     goal: validated.goal,
-    tasks: validated.tasks.map((t) => ({
+    tasks: (validated.tasks || []).map((t) => ({
       ...t,
+      dependencies: t.dependencies || [],
       status: "planned",
     })),
-    estimatedTimeSeconds: validated.estimatedTimeSeconds,
+    estimatedTimeSeconds: validated.estimatedTimeSeconds || 60,
   };
 }
 

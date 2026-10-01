@@ -60,32 +60,63 @@ Generate the complete JSON modeling plan and executable Blender Python (bpy).
       return parseAndValidateJson(text, ModelPlanSchema);
     });
 
-    const codeValidation = validateBlenderScript(validated.blenderCode);
+    const blenderCode = validated.blenderCode || "";
+    const codeValidation = validateBlenderScript(blenderCode);
 
     const combinedWarnings = [
-      ...validated.warnings,
-      ...codeValidation.warnings,
+      ...(validated.warnings || []),
+      ...(codeValidation.warnings || []),
     ];
 
     return {
       plan: {
-        intent: validated.intent,
-        summary: validated.summary,
-        objects: validated.objects,
-        steps: validated.steps,
-        materials: validated.materials,
-        lighting: validated.lighting,
-        camera: validated.camera,
-        assumptions: validated.assumptions,
+        intent: validated.intent || "create_model",
+        summary: validated.summary || "Generated 3D Model Plan",
+        objects: (validated.objects || []).map((o: any) => ({
+          name: o.name || "Object",
+          type: o.type || "mesh",
+          description: o.description || "",
+          approxDimensions: o.approxDimensions,
+          modifiers: o.modifiers || [],
+        })),
+        steps: (validated.steps || []).map((s: any) => ({
+          stepNumber: s.stepNumber || 1,
+          title: s.title || "Step",
+          instructions: s.instructions || "",
+          targetObject: s.targetObject,
+          operationType: s.operationType || "other",
+        })),
+        materials: (validated.materials || []).map((m: any) => ({
+          name: m.name || "Material",
+          targetObject: m.targetObject || "",
+          type: m.type || "principled_bsdf",
+          baseColor: m.baseColor,
+          roughness: m.roughness,
+          metallic: m.metallic,
+          emissionColor: m.emissionColor,
+          emissionStrength: m.emissionStrength,
+          notes: m.notes,
+        })),
+        lighting: (validated.lighting || []).map((l: any) => ({
+          name: l.name || "Light",
+          type: l.type || "POINT",
+          energyWatts: l.energyWatts || 100,
+          colorHex: l.colorHex,
+          position: l.position,
+          rotationDeg: l.rotationDeg,
+        })),
+        camera: validated.camera || undefined,
+        assumptions: validated.assumptions || [],
         warnings: combinedWarnings,
       },
       code: {
         language: "python",
-        content: validated.blenderCode,
+        content: blenderCode,
         clearSceneFirst: !input.previousCode,
       },
       warnings: combinedWarnings,
     };
+
   } catch (err: unknown) {
     console.warn("AI generation call encountered error, falling back gracefully:", err);
     return generateFallbackPlan(input);

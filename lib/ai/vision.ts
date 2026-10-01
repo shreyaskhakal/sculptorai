@@ -52,12 +52,17 @@ Formulate a structured component breakdown with confidence estimates, geometry a
 
     return {
       analysisId: `analysis_${Date.now()}`,
-      objects: validated.objects,
-      geometrySummary: validated.geometrySummary,
-      materials: validated.materials,
-      modelingApproach: validated.modelingApproach,
-      proportionsObservation: validated.proportionsObservation,
-      uncertainties: validated.uncertainties,
+      objects: (validated.objects || []).map((o: any) => ({
+        name: o.name || "Object",
+        confidence: typeof o.confidence === "number" ? o.confidence : 0.8,
+        approxGeometry: o.approxGeometry || "",
+        suggestedPrimitive: o.suggestedPrimitive || "Cube",
+      })),
+      geometrySummary: validated.geometrySummary || "",
+      materials: validated.materials || [],
+      modelingApproach: validated.modelingApproach || [],
+      proportionsObservation: validated.proportionsObservation || "",
+      uncertainties: validated.uncertainties || [],
       code: validated.blenderCode
         ? {
             language: "python",

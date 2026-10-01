@@ -14,12 +14,14 @@
     "@monaco-editor/react": "^4.6.0",
     "@supabase/ssr": "^0.5.1",
     "@supabase/supabase-js": "^2.45.6",
+    "@types/three": "^0.186.0",
     "clsx": "^2.1.1",
     "lucide-react": "^0.453.0",
     "next": "14.2.15",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tailwind-merge": "^2.5.4",
+    "three": "^0.186.1",
     "zod": "^3.23.8"
   },
   "devDependencies": {

@@ -8,7 +8,13 @@ import { CodeViewer } from "@/components/code/CodeViewer";
 import { ModelPlanCard } from "@/components/ai/ModelPlanCard";
 import { ExecutionPanel } from "@/components/execution/ExecutionPanel";
 import { DiffViewer } from "@/components/code/DiffViewer";
-import { ModelPlan, ImageAnalysis } from "@/types/ai";
+import { ThreeDViewer } from "@/components/viewer/ThreeDViewer";
+import { OnboardingWizardModal } from "@/components/onboarding/OnboardingWizardModal";
+import { TemplateGalleryModal } from "@/components/templates/TemplateGalleryModal";
+import { VersionComparisonModal } from "@/components/versions/VersionComparisonModal";
+import { SafetyScoreCard } from "@/components/security/SafetyScoreCard";
+import { ModelPlan, ImageAnalysis, SceneSnapshot } from "@/types/ai";
+import { DBGenerationVersion, DBTemplate } from "@/lib/supabase/db";
 import {
   FileCode,
   Layers,
@@ -21,6 +27,12 @@ import {
   AlertCircle,
   ArrowLeftRight,
   Radio,
+  Eye,
+  Box,
+  Download,
+  Play,
+  HelpCircle,
+  LayoutGrid,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -61,19 +73,28 @@ export default function WorkspacePage({
   const { projectId } = params;
   const { isDemoMode } = useAuth();
 
-  // Navigation & Tabs
+  // Navigation & View Toggles
   const [activeSidebarView, setActiveSidebarView] = useState<
     "chat" | "history" | "assets" | "settings"
   >("chat");
   const [activeRightTab, setActiveRightTab] = useState<
-    "code" | "plan" | "execution" | "diff"
+    "code" | "plan" | "execution" | "diff" | "scene"
   >("code");
+  const [centerLayoutView, setCenterLayoutView] = useState<"3d" | "split" | "editor">("split");
   const [mobileActiveTab, setMobileActiveTab] = useState<
-    "chat" | "plan" | "code" | "execution"
-  >("chat");
+    "chat" | "3d" | "code" | "execution"
+  >("3d");
 
-  // Project Meta
+  // Modals
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
+  const [isTemplateGalleryOpen, setIsTemplateGalleryOpen] = useState(false);
+  const [isVersionComparisonOpen, setIsVersionComparisonOpen] = useState(false);
+
+  // Project Meta & Live Blender Status
   const [project, setProject] = useState<ProjectData | null>(null);
+  const [blenderStatus, setBlenderStatus] = useState<string>("IDLE");
+  const [sceneSnapshot, setSceneSnapshot] = useState<SceneSnapshot | null>(null);
+  const [selectedObjectName, setSelectedObjectName] = useState<string | null>(null);
 
   // Active Code & Plan
   const [activeCode, setActiveCode] = useState<string>(
@@ -122,6 +143,7 @@ export default function WorkspacePage({
   const [selectedHistoryVersion, setSelectedHistoryVersion] =
     useState<GenerationHistoryItem | null>(null);
   const [generationHistory, setGenerationHistory] = useState<GenerationHistoryItem[]>([]);
+  const [versionsList, setVersionsList] = useState<DBGenerationVersion[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatItem[]>([
     {
       id: "msg_init",
@@ -150,7 +172,7 @@ export default function WorkspacePage({
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // 1. Fetch Initial Data (Project, Generations, Messages)
+  // 1. Fetch Initial Data (Project, Generations, Messages, Versions)
   useEffect(() => {
     let isMounted = true;
 
@@ -189,6 +211,16 @@ export default function WorkspacePage({
       })
       .catch((err) => console.error("Error loading generations:", err));
 
+    // Load Versions
+    fetch(`/api/versions?projectId=${projectId}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (isMounted && data?.versions) {
+          setVersionsList(data.versions);
+        }
+      })
+      .catch(console.error);
+
     // Load Persistent Chat Messages
     fetch(`/api/projects/${projectId}/messages`)
       .then((res) => (res.ok ? res.json() : null))
@@ -215,7 +247,26 @@ export default function WorkspacePage({
     };
   }, [projectId]);
 
-  // 2. Real Execution Polling Lifecycle
+  // 2. Continuous Blender Heartbeat & Status Polling
+  useEffect(() => {
+    const checkBlenderStatus = async () => {
+      try {
+        const res = await fetch("/api/blender/status");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.status) setBlenderStatus(data.status);
+        }
+      } catch {
+        setBlenderStatus("OFFLINE");
+      }
+    };
+
+    checkBlenderStatus();
+    const timer = setInterval(checkBlenderStatus, 8000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // 3. Real Execution Polling Lifecycle
   useEffect(() => {
     if (
       !activeExecutionId ||
@@ -249,27 +300,22 @@ export default function WorkspacePage({
           if (data.status === "claimed") {
             showToast("Claimed by Blender! Approve execution in Blender sidebar.");
           } else if (data.status === "running") {
-            showToast("Blender is executing Python script...");
+            showToast("Executing procedurally in Blender...");
           } else if (data.status === "success") {
-            showToast("Blender confirmed execution succeeded!");
-            clearInterval(interval);
+            showToast("Blender execution complete!");
           } else if (data.status === "error") {
-            showToast("Blender reported execution error.");
-            clearInterval(interval);
-          } else if (data.status === "cancelled") {
-            showToast("Execution was cancelled.");
-            clearInterval(interval);
+            showToast("Blender encountered an execution error.");
           }
         }
       } catch (err) {
-        console.error("Execution status polling error:", err);
+        console.error("Error polling execution status:", err);
       }
-    }, 1500);
+    }, 2000);
 
     return () => clearInterval(interval);
   }, [activeExecutionId, executionStatus]);
 
-  // 3. Handle Prompt Submit
+  // 4. Handle Prompt Submit (Unified Text, Modification, or Vision)
   const handlePromptSubmit = async (
     prompt: string,
     options: {
@@ -286,11 +332,11 @@ export default function WorkspacePage({
 
     const isModification =
       activeCode.trim().length > 0 &&
-      /\b(make|change|add|increase|decrease|resize|scale|color|material|bigger|smaller|extend)\b/i.test(
+      /\b(make|change|add|increase|decrease|resize|scale|color|material|bigger|smaller|extend|thinner|wider|darker|lighter)\b/i.test(
         prompt
       );
 
-    // Add User Message to Chat and Persist
+    // Add User Message to Chat
     const userMsg: ChatItem = {
       id: `usr_${Date.now()}`,
       role: "user",
@@ -302,17 +348,6 @@ export default function WorkspacePage({
     };
     setChatMessages((prev) => [...prev, userMsg]);
     setIsLoading(true);
-
-    // Persist message in background
-    fetch(`/api/projects/${projectId}/messages`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        role: "user",
-        content: { text: prompt },
-        imageUrl: options.imageBase64 ? `data:image/png;base64,${options.imageBase64}` : undefined,
-      }),
-    }).catch((err) => console.error("Could not persist user message:", err));
 
     try {
       if (options.imageBase64) {
@@ -345,208 +380,197 @@ export default function WorkspacePage({
             setActiveRightTab("code");
           }
           showToast("Reference breakdown generated!");
-
-          // Persist assistant message
-          fetch(`/api/projects/${projectId}/messages`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              role: "assistant",
-              content: { text: assistantMsg.text },
-              metadata: { imageAnalysis: data },
-            }),
-          }).catch(console.error);
         } else {
           throw new Error(data.error || "Image analysis failed");
         }
-      } else {
-        // TEXT GENERATION / MODIFICATION FLOW
-        setLoadingStage(
-          isModification ? "Analyzing Scene Modification Request" : "Analyzing Request"
-        );
-        setLoadingStage("Creating Procedural Modeling Plan");
-        setLoadingStage("Generating Verified Blender Python");
+      } else if (isModification) {
+        // CONVERSATIONAL SCENE EDIT FLOW
+        setLoadingStage("Planning Surgical Scene Modifications");
+        const res = await fetch("/api/ai/edit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectId,
+            prompt,
+            currentScene: sceneSnapshot || {
+              sceneName: "Scene",
+              blenderVersion: options.blenderVersion,
+              objects: activePlan?.objects || [],
+            },
+            blenderVersion: options.blenderVersion,
+          }),
+        });
+        const data = await res.json();
 
+        if (res.ok) {
+          setActiveCode(data.code.content);
+          if (data.patch) {
+            setActivePlan({
+              intent: "modify_scene",
+              summary: data.patch.summary,
+              objects: data.patch.affectedObjects.map((name: string) => ({
+                name,
+                type: "mesh",
+                description: "Modified object",
+              })),
+              steps: [],
+              materials: [],
+              lighting: [],
+              assumptions: [],
+              warnings: data.safety?.warnings || [],
+            });
+          }
+
+          const assistantMsg: ChatItem = {
+            id: `ai_${Date.now()}`,
+            role: "assistant",
+            text: `Surgically updated scene: ${data.patch.summary}`,
+            createdAt: timestamp,
+          };
+          setChatMessages((prev) => [...prev, assistantMsg]);
+          showToast("Surgical scene modifications ready for review!");
+        } else {
+          throw new Error(data.error || "Scene edit failed");
+        }
+      } else {
+        // FULL GENERATION FLOW
+        setLoadingStage("Generating Verified Blender Python");
         const res = await fetch("/api/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             projectId,
             prompt,
-            blenderVersion: options.blenderVersion || project?.blenderVersion || "4.x",
             style: options.style,
-            previousCode: isModification ? activeCode : undefined,
-            mode: isModification ? "modify" : "create",
+            blenderVersion: options.blenderVersion,
           }),
         });
         const data = await res.json();
 
         if (res.ok) {
-          const newVersionNum = data.versionNumber || generationHistory.length + 1;
-          const newHistoryItem: GenerationHistoryItem = {
-            id: data.generationId || `gen_${Date.now()}`,
-            versionNumber: newVersionNum,
-            prompt,
-            code: data.code.content,
-            plan: data.plan,
-            timestamp,
-          };
-
-          setGenerationHistory((prev) => [newHistoryItem, ...prev]);
-          setActivePlan(data.plan);
           setActiveCode(data.code.content);
-          setActiveRightTab("code");
-
-          const assistantText = isModification
-            ? `Applied modifications: ${data.plan.summary} (Generation #${newVersionNum})`
-            : `${data.plan.summary} (Generation #${newVersionNum})`;
+          setActivePlan(data.plan);
 
           const assistantMsg: ChatItem = {
             id: `ai_${Date.now()}`,
             role: "assistant",
-            text: assistantText,
+            text: `Here is the structured 3D modeling plan for "${prompt}". Review the code and approve to execute in Blender.`,
             plan: data.plan,
             createdAt: timestamp,
           };
           setChatMessages((prev) => [...prev, assistantMsg]);
-          showToast(`Generation #${newVersionNum} ready!`);
-
-          // Persist assistant message
-          fetch(`/api/projects/${projectId}/messages`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              role: "assistant",
-              content: { text: assistantText },
-              metadata: { plan: data.plan },
-            }),
-          }).catch(console.error);
+          showToast("New model generated!");
         } else {
-          throw new Error(data.error || "Generation request failed");
+          throw new Error(data.error || "Generation failed");
         }
       }
-    } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : "Generation failed";
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          id: `err_${Date.now()}`,
-          role: "assistant",
-          error: errMsg,
-          createdAt: timestamp,
-        },
-      ]);
+    } catch (err: any) {
+      console.error(err);
+      showToast(err.message || "An error occurred");
     } finally {
       setIsLoading(false);
       setLoadingStage("");
     }
   };
 
-  // 4. Handle Real Send to Blender Queue / Approve & Run
-  const handleDispatchExecution = async (autoApproveInUi: boolean = false) => {
-    setActiveRightTab("execution");
-    setMobileActiveTab("execution");
-    setExecutionStatus("pending");
-    setExecutionStdout(null);
-    setExecutionStderr(null);
-    setExecutionDuration(null);
+  // 5. Queue Task for Blender Execution Handshake
+  const handleQueueTask = async () => {
+    if (!activeCode.trim()) {
+      showToast("No script available to queue");
+      return;
+    }
 
     try {
-      const currentGenId =
-        selectedHistoryVersion?.id || generationHistory[0]?.id || `gen_${Date.now()}`;
-
       const res = await fetch("/api/executions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          generationId: currentGenId,
           projectId,
-          blenderVersion: project?.blenderVersion || "4.x",
           script: activeCode,
-          prompt: activePlan?.summary || "Blender scene generation",
+          prompt: activePlan?.summary || "User Approved 3D Modeling Task",
+          blenderVersion: project?.blenderVersion || "4.x",
         }),
       });
 
       const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Could not dispatch execution to Blender");
+      if (res.ok && data.execution) {
+        setActiveExecutionId(data.execution.id);
+        setExecutionStatus("pending");
+        setActiveRightTab("execution");
+        showToast("Task queued for Blender add-on!");
+      } else {
+        showToast(data.error || "Failed to queue task");
       }
-
-      const execId = data.id || data.executionId;
-      setActiveExecutionId(execId);
-      setExecutionStatus("pending");
-      showToast("Task queued for Blender add-on. Open Blender to claim & run.");
-    } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : "Execution dispatch failed";
-      setExecutionStatus("error");
-      setExecutionStderr(errMsg);
+    } catch (err) {
+      showToast("Network error queueing task");
     }
   };
 
-  const handleApproveAndRun = () => handleDispatchExecution(true);
-  const handleSendToBlender = () => handleDispatchExecution(false);
-
-  // 5. Handle AI Debugging of Real Stderr Traceback
+  // 6. Fix with AI Self-Repair Loop
   const handleFixWithAI = async () => {
-    if (!executionStderr) return;
-    setIsFixing(true);
+    if (!executionStderr && !executionStdout) {
+      showToast("No execution error to diagnose");
+      return;
+    }
 
+    setIsFixing(true);
     try {
       const res = await fetch("/api/debug", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           projectId,
-          blenderVersion: project?.blenderVersion || "4.x",
-          error: executionStderr,
+          error: executionStderr || executionStdout,
           script: activeCode,
+          blenderVersion: project?.blenderVersion || "4.x",
         }),
       });
-      const data = await res.json();
 
+      const data = await res.json();
       if (res.ok && data.correctedCode) {
         setActiveCode(data.correctedCode);
         setActiveRightTab("code");
-
-        const fixExplanation = `AI Diagnosis: ${data.diagnosis.problem}\nWhy: ${data.diagnosis.whyItHappened}\nSuggested Fix: ${data.diagnosis.suggestedFix}\n\nThe corrected code is now loaded in your editor for review. Review it and click "Approve & Run" when ready.`;
-
-        setChatMessages((prev) => [
-          ...prev,
-          {
-            id: `dbg_${Date.now()}`,
-            role: "assistant",
-            text: fixExplanation,
-            createdAt: "Just now",
-          },
-        ]);
-
-        fetch(`/api/projects/${projectId}/messages`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            role: "assistant",
-            content: { text: fixExplanation },
-          }),
-        }).catch(console.error);
-
-        showToast("Corrected script loaded into Code editor! Review before running.");
+        showToast("AI repaired the script! Review and re-approve.");
       } else {
-        throw new Error(data.error || "AI could not generate fix");
+        showToast(data.error || "Diagnosis failed");
       }
     } catch (err) {
-      console.error("AI fix error:", err);
-      showToast("Could not diagnose error automatically.");
+      showToast("AI diagnosis request failed");
     } finally {
       setIsFixing(false);
     }
   };
 
-  // Restore previous version
-  const handleRestoreVersion = (item: GenerationHistoryItem) => {
-    setActiveCode(item.code);
-    setActivePlan(item.plan);
-    setActiveRightTab("code");
-    showToast(`Restored Generation #${item.versionNumber}`);
+  // 7. Handle Template Selected
+  const handleSelectTemplate = (tpl: DBTemplate) => {
+    setActiveCode(tpl.starterCode);
+    if (tpl.starterPlan) {
+      setActivePlan(tpl.starterPlan);
+    }
+    showToast(`Loaded template: ${tpl.title}`);
+  };
+
+  // 8. Download Exports (Python, GLB, Plan)
+  const handleExport = (format: "py" | "json" | "glb") => {
+    if (format === "py") {
+      const blob = new Blob([activeCode], { type: "text/x-python" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${project?.name || "sculptor_model"}.py`;
+      a.click();
+      showToast("Exported Python script!");
+    } else if (format === "json") {
+      const blob = new Blob([JSON.stringify(activePlan, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${project?.name || "sculptor_plan"}.json`;
+      a.click();
+      showToast("Exported modeling plan!");
+    } else {
+      showToast("Use the Blender add-on 'Export 3D Preview' button to export GLB.");
+    }
   };
 
   return (
@@ -559,283 +583,333 @@ export default function WorkspacePage({
         </div>
       )}
 
-      {/* COLUMN 1: Left Navigation / Project History Sidebar */}
+      {/* Modals */}
+      <OnboardingWizardModal
+        isOpen={isOnboardingOpen}
+        onClose={() => setIsOnboardingOpen(false)}
+        blenderStatus={blenderStatus}
+      />
+      <TemplateGalleryModal
+        isOpen={isTemplateGalleryOpen}
+        onClose={() => setIsTemplateGalleryOpen(false)}
+        onSelectTemplate={handleSelectTemplate}
+      />
+      <VersionComparisonModal
+        isOpen={isVersionComparisonOpen}
+        onClose={() => setIsVersionComparisonOpen(false)}
+        versions={versionsList}
+        onRestoreVersion={(v) => {
+          setActiveCode(v.code);
+          if (v.planJson) setActivePlan(v.planJson);
+          showToast(`Applied Version #${v.versionNumber}`);
+        }}
+      />
+
+      {/* COLUMN 1: Left Project Sidebar */}
       <ProjectSidebar
         projectId={projectId}
-        projectName={project?.name || "Cyberpunk Desk Setup"}
+        projectName={project?.name || "SculptorAI Studio"}
         blenderVersion={project?.blenderVersion || "4.x"}
         activeView={activeSidebarView}
         onSelectView={setActiveSidebarView}
         generationsCount={generationHistory.length}
       />
 
-      {/* History Drawer View when selected */}
-      <div className="flex-1 flex overflow-hidden">
-        {activeSidebarView === "history" && (
-          <div className="w-80 bg-[#0B0D14] border-r border-[#1C212E] p-4 flex flex-col h-full overflow-y-auto">
-            <div className="flex items-center justify-between pb-3 border-b border-[#1C212E] mb-4">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-[#7A86A1] flex items-center gap-2">
-                <History className="w-4 h-4 text-[#00E5FF]" />
-                <span>Generation History</span>
-              </h3>
-              <Badge variant="cyan" className="text-[10px]">
-                {generationHistory.length} Versions
-              </Badge>
+      {/* MAIN STUDIO AREA */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* TOP STUDIO TOOLBAR / HEADER */}
+        <header className="h-12 px-4 bg-[#0C0F17] border-b border-[#1C212E] flex items-center justify-between z-10 shrink-0">
+          {/* Left: Project title & Blender status badge */}
+          <div className="flex items-center gap-3">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#F5792A] shadow-glow-orange" />
+            <span className="text-sm font-bold text-white tracking-wide">
+              {project?.name || "SculptorAI Studio"}
+            </span>
+
+            {/* Live Workstation Connection Status */}
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#131724] border border-[#21273B] text-xs">
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  blenderStatus === "CONNECTED" || blenderStatus === "IDLE"
+                    ? "bg-emerald-400 animate-pulse shadow-glow-emerald"
+                    : blenderStatus === "EXECUTING" || blenderStatus === "BUSY"
+                    ? "bg-[#00E5FF] animate-spin"
+                    : "bg-[#5A667E]"
+                }`}
+              />
+              <span className="text-[#8E9DB8] font-medium">Blender:</span>
+              <span
+                className={`font-semibold ${
+                  blenderStatus === "CONNECTED" || blenderStatus === "IDLE"
+                    ? "text-emerald-400"
+                    : blenderStatus === "EXECUTING"
+                    ? "text-[#00E5FF]"
+                    : "text-[#7B879E]"
+                }`}
+              >
+                {blenderStatus === "CONNECTED" || blenderStatus === "IDLE"
+                  ? "Connected"
+                  : blenderStatus}
+              </span>
             </div>
+          </div>
 
-            <div className="space-y-3">
-              {generationHistory.map((item) => (
-                <div
+          {/* Center: Viewport Mode Switcher */}
+          <div className="hidden lg:flex items-center gap-1 bg-[#131724] p-1 rounded-lg border border-[#21273B]">
+            <button
+              onClick={() => setCenterLayoutView("3d")}
+              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                centerLayoutView === "3d"
+                  ? "bg-[#252C40] text-[#00E5FF] shadow-sm"
+                  : "text-[#7B87A2] hover:text-white"
+              }`}
+            >
+              3D Viewport
+            </button>
+            <button
+              onClick={() => setCenterLayoutView("split")}
+              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                centerLayoutView === "split"
+                  ? "bg-[#252C40] text-[#00E5FF] shadow-sm"
+                  : "text-[#7B87A2] hover:text-white"
+              }`}
+            >
+              Split Studio
+            </button>
+            <button
+              onClick={() => setCenterLayoutView("editor")}
+              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                centerLayoutView === "editor"
+                  ? "bg-[#252C40] text-[#F5792A] shadow-sm"
+                  : "text-[#7B87A2] hover:text-white"
+              }`}
+            >
+              Code Only
+            </button>
+          </div>
+
+          {/* Right: Actions, Modals, Exports */}
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setIsTemplateGalleryOpen(true)}
+              className="text-xs text-[#A2ACBF] hover:text-[#00E5FF]"
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Templates</span>
+            </Button>
+
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setIsVersionComparisonOpen(true)}
+              className="text-xs text-[#A2ACBF] hover:text-[#00E5FF]"
+            >
+              <ArrowLeftRight className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Versions</span>
+            </Button>
+
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setIsOnboardingOpen(true)}
+              className="text-xs text-[#A2ACBF]"
+              title="First-time setup guide"
+            >
+              <HelpCircle className="w-3.5 h-3.5" />
+            </Button>
+
+            <Button
+              size="sm"
+              variant="primary"
+              onClick={handleQueueTask}
+              className="text-xs font-semibold px-3 shadow-glow-orange flex items-center gap-1.5"
+            >
+              <Play className="w-3 h-3 fill-current" />
+              <span>Approve & Run</span>
+            </Button>
+          </div>
+        </header>
+
+        {/* 3-COLUMN WORKSPACE BODY */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* COLUMN A: AI Chat & Prompt Composer (Left) */}
+          <div
+            className={`w-full md:w-80 lg:w-96 flex flex-col bg-[#0B0D14] border-r border-[#1C212E] ${
+              mobileActiveTab === "chat" ? "flex" : "hidden md:flex"
+            }`}
+          >
+            {/* Chat Thread */}
+            <div className="flex-1 p-4 overflow-y-auto space-y-4">
+              {chatMessages.map((item) => (
+                <ChatMessage
                   key={item.id}
-                  className="p-3.5 rounded-xl bg-[#10131D] border border-[#20273A] hover:border-[#F5792A]/50 transition-colors space-y-2"
-                >
-                  <div className="flex items-center justify-between">
-                    <Badge variant="orange" className="text-[10px]">
-                      v{item.versionNumber}
-                    </Badge>
-                    <span className="text-[10px] text-[#6A768F]">
-                      {item.timestamp}
-                    </span>
-                  </div>
-
-                  <p className="text-xs text-white font-medium line-clamp-2">
-                    {item.prompt}
-                  </p>
-
-                  <div className="pt-2 flex items-center gap-2 border-t border-[#191F2F]">
-                    <button
-                      onClick={() => handleRestoreVersion(item)}
-                      className="inline-flex items-center gap-1 text-[10px] text-[#A2ACBF] hover:text-white transition-colors"
-                    >
-                      <RotateCcw className="w-3 h-3" />
-                      <span>Restore</span>
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        setSelectedHistoryVersion(item);
-                        setActiveRightTab("diff");
-                      }}
-                      className="inline-flex items-center gap-1 text-[10px] text-[#00E5FF] hover:underline font-semibold ml-auto"
-                    >
-                      <ArrowLeftRight className="w-3 h-3" />
-                      <span>Diff</span>
-                    </button>
-                  </div>
-                </div>
+                  role={item.role}
+                  text={item.text}
+                  plan={item.plan}
+                  imageAnalysis={item.imageAnalysis}
+                  imageUrl={item.imageUrl}
+                  error={item.error}
+                  createdAt={item.createdAt}
+                  onUseCode={(code) => {
+                    setActiveCode(code);
+                    setActiveRightTab("code");
+                    showToast("Script loaded in editor");
+                  }}
+                />
               ))}
             </div>
-          </div>
-        )}
 
-        {/* COLUMN 2: Center AI Conversation Thread */}
-        <div
-          className={`flex-1 flex flex-col min-w-0 border-r border-[#1B202D] ${
-            mobileActiveTab === "chat" ? "flex" : "hidden md:flex"
-          }`}
-        >
-          {/* Chat Header */}
-          <header className="px-6 py-3 bg-[#0C0E16] border-b border-[#1C212E] flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#F5792A] shadow-glow-orange" />
-              <h1 className="text-sm font-semibold text-white">
-                {project?.name || "SculptorAI Copilot Studio"}
-              </h1>
-              <Badge variant="orange" className="text-[10px] font-mono">
-                Blender {project?.blenderVersion || "4.x / 3.6 LTS"}
-              </Badge>
-              {isDemoMode && (
-                <Badge variant="cyan" className="text-[10px]">
-                  Demo Mode
-                </Badge>
-              )}
+            {/* Prompt Composer Box */}
+            <div className="p-3.5 bg-[#080A0F] border-t border-[#1C212E]">
+              <PromptComposer
+                onSubmitPrompt={handlePromptSubmit}
+                isLoading={isLoading}
+                loadingStage={loadingStage}
+              />
             </div>
+          </div>
 
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#131622] border border-[#212638] text-[11px] text-[#CCD2E3]">
-                <Radio className="w-3 h-3 text-emerald-400 animate-pulse" />
-                <span>Blender Pipeline Ready</span>
+          {/* COLUMN B: Center Interactive 3D WebGL Viewer */}
+          {(centerLayoutView === "3d" || centerLayoutView === "split") && (
+            <div
+              className={`flex-1 p-3 bg-[#07090F] flex flex-col min-w-0 ${
+                mobileActiveTab === "3d" ? "flex" : "hidden md:flex"
+              }`}
+            >
+              <ThreeDViewer
+                modelPlan={activePlan}
+                sceneSnapshot={sceneSnapshot}
+                onSelectObject={setSelectedObjectName}
+                selectedObjectName={selectedObjectName}
+              />
+            </div>
+          )}
+
+          {/* COLUMN C: Right Inspector (Code / Plan / Execution / Diff) */}
+          {(centerLayoutView === "editor" || centerLayoutView === "split") && (
+            <div
+              className={`w-full ${
+                centerLayoutView === "split" ? "md:w-96 lg:w-[32rem]" : "flex-1"
+              } flex flex-col bg-[#090B12] border-l border-[#1C212E] ${
+                mobileActiveTab === "code" || mobileActiveTab === "execution"
+                  ? "flex"
+                  : "hidden md:flex"
+              }`}
+            >
+              {/* Tab Navigation */}
+              <div className="flex items-center justify-between px-3 py-2 bg-[#0E111A] border-b border-[#1B202D]">
+                <div className="flex items-center gap-1 bg-[#141825] p-1 rounded-lg border border-[#212739]">
+                  <button
+                    onClick={() => setActiveRightTab("code")}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                      activeRightTab === "code"
+                        ? "bg-[#252C40] text-white shadow-sm"
+                        : "text-[#7B87A2] hover:text-[#CCD2E3]"
+                    }`}
+                  >
+                    <FileCode className="w-3.5 h-3.5 text-[#F5792A]" />
+                    <span>Code</span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveRightTab("plan")}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                      activeRightTab === "plan"
+                        ? "bg-[#252C40] text-white shadow-sm"
+                        : "text-[#7B87A2] hover:text-[#CCD2E3]"
+                    }`}
+                  >
+                    <Layers className="w-3.5 h-3.5 text-[#00E5FF]" />
+                    <span>Plan</span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveRightTab("execution")}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                      activeRightTab === "execution"
+                        ? "bg-[#252C40] text-white shadow-sm"
+                        : "text-[#7B87A2] hover:text-[#CCD2E3]"
+                    }`}
+                  >
+                    <Terminal className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Run</span>
+                    {executionStatus === "success" && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                    )}
+                  </button>
+
+                  {selectedHistoryVersion && (
+                    <button
+                      onClick={() => setActiveRightTab("diff")}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                        activeRightTab === "diff"
+                          ? "bg-[#252C40] text-white shadow-sm"
+                          : "text-[#7B87A2] hover:text-[#CCD2E3]"
+                      }`}
+                    >
+                      <ArrowLeftRight className="w-3.5 h-3.5 text-violet-400" />
+                      <span>Diff</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Quick Export Menu */}
+                <div className="flex items-center gap-1">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleExport("py")}
+                    className="text-xs text-[#A2ACBF] hover:text-white"
+                    title="Download Python Script"
+                  >
+                    <Download className="w-3 h-3" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* Tab Content Body */}
+              <div className="flex-1 p-3 overflow-y-auto">
+                {activeRightTab === "code" && (
+                  <CodeViewer
+                    code={activeCode}
+                    onCodeChange={setActiveCode}
+                    onApproveAndRun={handleQueueTask}
+                    isExecuting={executionStatus === "running" || executionStatus === "pending"}
+                  />
+                )}
+
+                {activeRightTab === "plan" && activePlan && (
+                  <ModelPlanCard plan={activePlan} />
+                )}
+
+                {activeRightTab === "execution" && (
+                  <ExecutionPanel
+                    status={executionStatus}
+                    stdout={executionStdout}
+                    stderr={executionStderr}
+                    durationMs={executionDuration}
+                    onFixWithAI={handleFixWithAI}
+                    isFixing={isFixing}
+                  />
+                )}
+
+                {activeRightTab === "diff" && selectedHistoryVersion && (
+                  <DiffViewer
+                    originalCode={selectedHistoryVersion.code}
+                    modifiedCode={activeCode}
+                    originalLabel={`Generation #${selectedHistoryVersion.versionNumber}`}
+                    modifiedLabel="Current Code in Editor"
+                    onApplyModified={() => {
+                      setActiveRightTab("code");
+                      showToast("Current version confirmed");
+                    }}
+                  />
+                )}
               </div>
             </div>
-          </header>
-
-          {/* Chat Scroll Area */}
-          <div className="flex-1 p-6 overflow-y-auto space-y-4 bg-grid-pattern">
-            {chatMessages.map((item) => (
-              <ChatMessage
-                key={item.id}
-                role={item.role}
-                text={item.text}
-                plan={item.plan}
-                imageAnalysis={item.imageAnalysis}
-                imageUrl={item.imageUrl}
-                error={item.error}
-                createdAt={item.createdAt}
-                onUseCode={(code) => {
-                  setActiveCode(code);
-                  setActiveRightTab("code");
-                  showToast("Script loaded in editor");
-                }}
-              />
-            ))}
-          </div>
-
-          {/* Prompt Composer Box */}
-          <div className="p-4 bg-[#090B10] border-t border-[#1C212E]">
-            <PromptComposer
-              onSubmitPrompt={handlePromptSubmit}
-              isLoading={isLoading}
-              loadingStage={loadingStage}
-            />
-          </div>
-        </div>
-
-        {/* COLUMN 3: Right Inspector (Plan / Code / Execution / Diff) */}
-        <div
-          className={`w-full md:w-[45%] flex flex-col bg-[#0A0C13] ${
-            mobileActiveTab !== "chat" ? "flex" : "hidden md:flex"
-          }`}
-        >
-          {/* Right Header Navigation Tabs */}
-          <div className="flex items-center justify-between px-4 py-2.5 bg-[#0F121A] border-b border-[#1C212E]">
-            <div className="flex items-center gap-1 bg-[#151926] p-1 rounded-lg border border-[#23293B]">
-              <button
-                onClick={() => setActiveRightTab("code")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                  activeRightTab === "code"
-                    ? "bg-[#252C3F] text-white shadow-sm"
-                    : "text-[#7B87A2] hover:text-[#CCD2E3]"
-                }`}
-              >
-                <FileCode className="w-3.5 h-3.5 text-[#F5792A]" />
-                <span>Python Code</span>
-              </button>
-
-              <button
-                onClick={() => setActiveRightTab("plan")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                  activeRightTab === "plan"
-                    ? "bg-[#252C3F] text-white shadow-sm"
-                    : "text-[#7B87A2] hover:text-[#CCD2E3]"
-                }`}
-              >
-                <Layers className="w-3.5 h-3.5 text-[#00E5FF]" />
-                <span>Plan</span>
-              </button>
-
-              <button
-                onClick={() => setActiveRightTab("execution")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                  activeRightTab === "execution"
-                    ? "bg-[#252C3F] text-white shadow-sm"
-                    : "text-[#7B87A2] hover:text-[#CCD2E3]"
-                }`}
-              >
-                <Terminal className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Execution</span>
-                {executionStatus === "success" && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                )}
-                {executionStatus === "error" && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
-                )}
-                {executionStatus === "claimed" && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#00E5FF] animate-ping" />
-                )}
-                {executionStatus === "pending" && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-spin" />
-                )}
-              </button>
-
-              {selectedHistoryVersion && (
-                <button
-                  onClick={() => setActiveRightTab("diff")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                    activeRightTab === "diff"
-                      ? "bg-[#252C3F] text-white shadow-sm"
-                      : "text-[#7B87A2] hover:text-[#CCD2E3]"
-                  }`}
-                >
-                  <ArrowLeftRight className="w-3.5 h-3.5 text-violet-400" />
-                  <span>Diff</span>
-                </button>
-              )}
-            </div>
-
-            {activeRightTab === "code" && (
-              <div className="flex items-center gap-2">
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={handleSendToBlender}
-                  className="text-xs text-[#00E5FF] border-[#00E5FF]/30 hover:border-[#00E5FF]"
-                  title="Queue task for Blender add-on"
-                >
-                  <Send className="w-3 h-3" />
-                  <span>Send to Blender</span>
-                </Button>
-                <Button
-                  size="sm"
-                  variant="primary"
-                  onClick={handleApproveAndRun}
-                  className="text-xs font-semibold px-3 shadow-glow-orange"
-                  title="Approve and queue task for execution"
-                >
-                  <span>Approve & Run</span>
-                </Button>
-              </div>
-            )}
-          </div>
-
-          {/* Tab View Container */}
-          <div className="flex-1 p-4 overflow-y-auto">
-            {activeRightTab === "code" && (
-              <CodeViewer
-                code={activeCode}
-                onCodeChange={setActiveCode}
-                onRegenerate={() =>
-                  handlePromptSubmit(
-                    "Refine scene geometry with smoother bevels and organized vertex groups",
-                    {
-                      style: "low-poly",
-                      blenderVersion: project?.blenderVersion || "4.x",
-                    }
-                  )
-                }
-                onSendToBlender={handleSendToBlender}
-                onApproveAndRun={handleApproveAndRun}
-                isExecuting={executionStatus === "running" || executionStatus === "pending"}
-              />
-            )}
-
-            {activeRightTab === "plan" && activePlan && (
-              <ModelPlanCard plan={activePlan} />
-            )}
-
-            {activeRightTab === "execution" && (
-              <ExecutionPanel
-                status={executionStatus}
-                stdout={executionStdout}
-                stderr={executionStderr}
-                durationMs={executionDuration}
-                onFixWithAI={handleFixWithAI}
-                isFixing={isFixing}
-              />
-            )}
-
-            {activeRightTab === "diff" && selectedHistoryVersion && (
-              <DiffViewer
-                originalCode={selectedHistoryVersion.code}
-                modifiedCode={activeCode}
-                originalLabel={`Generation #${selectedHistoryVersion.versionNumber}`}
-                modifiedLabel="Current Code in Editor"
-                onApplyModified={() => {
-                  setActiveRightTab("code");
-                  showToast("Current version confirmed");
-                }}
-              />
-            )}
-          </div>
+          )}
         </div>
       </div>
 
@@ -851,16 +925,13 @@ export default function WorkspacePage({
           <span>Chat</span>
         </button>
         <button
-          onClick={() => {
-            setMobileActiveTab("plan");
-            setActiveRightTab("plan");
-          }}
+          onClick={() => setMobileActiveTab("3d")}
           className={`flex flex-col items-center gap-1 text-[10px] ${
-            mobileActiveTab === "plan" ? "text-[#00E5FF] font-bold" : "text-[#7A86A1]"
+            mobileActiveTab === "3d" ? "text-[#00E5FF] font-bold" : "text-[#7A86A1]"
           }`}
         >
-          <Layers className="w-4 h-4" />
-          <span>Plan</span>
+          <Box className="w-4 h-4" />
+          <span>3D View</span>
         </button>
         <button
           onClick={() => {

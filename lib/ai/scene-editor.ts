@@ -52,20 +52,21 @@ Generate the surgical scene modification JSON operations and executable Blender 
     return parseAndValidateJson(text, ScenePatchSchema);
   });
 
-  const codeValidation = validateBlenderScript(validated.blenderCode);
+  const blenderCode = validated.blenderCode || "";
+  const codeValidation = validateBlenderScript(blenderCode);
 
   const patch: ScenePatch = {
     patchId: `patch_${Date.now()}`,
-    summary: validated.summary,
-    operations: validated.operations,
-    blenderCode: validated.blenderCode,
-    estimatedComplexity: validated.estimatedComplexity,
-    affectedObjects: validated.affectedObjects,
+    summary: validated.summary || "Scene modifications",
+    operations: (validated.operations || []) as any,
+    blenderCode,
+    estimatedComplexity: (validated.estimatedComplexity as any) || "low",
+    affectedObjects: validated.affectedObjects || [],
   };
 
   const code: GeneratedCode = {
     language: "python",
-    content: validated.blenderCode,
+    content: blenderCode,
     clearSceneFirst: false,
   };
 

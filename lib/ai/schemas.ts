@@ -110,6 +110,7 @@ export type BlenderDebugParsed = z.infer<typeof BlenderDebugSchema>;
 export const PatchOperationSchema = z.object({
   type: z.enum([
     "create_object",
+    "modify_object",
     "delete_object",
     "duplicate_object",
     "rename_object",

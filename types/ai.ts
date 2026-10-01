@@ -165,6 +165,7 @@ export interface SceneSnapshot {
 
 export type PatchOperationType =
   | "create_object"
+  | "modify_object"
   | "delete_object"
   | "duplicate_object"
   | "rename_object"

@@ -13,13 +13,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: authError || "Unauthorized" }, { status: statusCode || 401 });
     }
 
-    const rateLimit = checkRateLimit(user.id, "generate");
+    const rateKey = `edit_${user.id}`;
+    const rateLimit = checkRateLimit(rateKey, { maxRequests: 30 });
     if (!rateLimit.allowed) {
       return NextResponse.json(
         { error: "Too many requests. Please wait a moment." },
         { status: 429 }
       );
     }
+
 
     const body = await req.json();
     const {
@@ -71,15 +73,17 @@ export async function POST(req: NextRequest) {
     // Save generation and version if projectId provided
     let genRecord = null;
     if (projectId) {
+      const prevGenerations = await db.getGenerations(projectId, user.id);
+      const nextVersion = prevGenerations.length + 1;
+
       genRecord = await db.createGeneration({
         projectId,
         userId: user.id,
+        versionNumber: nextVersion,
         prompt: cleanPrompt,
         mode: "modify",
         planJson: editResult.patch,
         code: editResult.code.content,
-        blenderVersion: blenderVersion || "4.x",
-        status: safety.isValid ? "completed" : "failed",
         warnings: [...editResult.warnings, ...safety.warnings],
       });
 
@@ -96,6 +100,7 @@ export async function POST(req: NextRequest) {
         });
       }
     }
+
 
     return NextResponse.json({
       success: true,

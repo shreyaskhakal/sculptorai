@@ -14,6 +14,9 @@ import {
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 
+import { SafetyScoreCard } from "@/components/security/SafetyScoreCard";
+import { ValidationResult, validateBlenderScript } from "@/lib/blender/validator";
+
 // Dynamically import Monaco Editor to avoid SSR window issues
 const Editor = dynamic(() => import("@monaco-editor/react"), {
   ssr: false,
@@ -26,6 +29,7 @@ const Editor = dynamic(() => import("@monaco-editor/react"), {
 
 export interface CodeViewerProps {
   code: string;
+  validation?: ValidationResult | null;
   onCodeChange?: (newCode: string) => void;
   onRegenerate?: () => void;
   onSendToBlender?: () => void;
@@ -36,6 +40,7 @@ export interface CodeViewerProps {
 
 export function CodeViewer({
   code,
+  validation,
   onCodeChange,
   onRegenerate,
   onSendToBlender,
@@ -43,6 +48,7 @@ export function CodeViewer({
   isExecuting = false,
   readOnly = false,
 }: CodeViewerProps) {
+
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -160,10 +166,18 @@ export function CodeViewer({
         </div>
       </div>
 
+      {/* Safety Score Matrix */}
+      {code && (
+        <div className="p-3 bg-[#0A0D14] border-b border-[#1C2233]">
+          <SafetyScoreCard validation={validation || validateBlenderScript(code)} code={code} />
+        </div>
+      )}
+
       {/* Editor Body */}
       <div className="relative flex-1 min-h-[350px]">
         {code ? (
           <Editor
+
             height="100%"
             language="python"
             theme="vs-dark"
