@@ -25,6 +25,8 @@ import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { formatDate } from "@/lib/utils/cn";
 import { useAuth } from "@/components/auth/AuthProvider";
+import { OnboardingWizardModal } from "@/components/onboarding/OnboardingWizardModal";
+import { TemplateGalleryModal } from "@/components/templates/TemplateGalleryModal";
 
 interface ProjectItem {
   id: string;
@@ -56,6 +58,10 @@ export default function DashboardPage() {
   });
   const [searchTerm, setSearchTerm] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
+  const [isTemplatesOpen, setIsTemplatesOpen] = useState(false);
+  const [blenderOnline, setBlenderOnline] = useState(false);
+  const [blenderStatus, setBlenderStatus] = useState("disconnected");
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectDesc, setNewProjectDesc] = useState("");
   const [newProjectVersion, setNewProjectVersion] = useState("4.x");
@@ -75,6 +81,16 @@ export default function DashboardPage() {
         if (data) setStats(data);
       })
       .catch((err) => console.error("Could not fetch stats:", err));
+
+    fetch("/api/blender/status")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data) {
+          setBlenderOnline(data.isOnline);
+          setBlenderStatus(data.status || (data.isOnline ? "connected" : "disconnected"));
+        }
+      })
+      .catch(() => {});
   };
 
   useEffect(() => {
@@ -149,15 +165,47 @@ export default function DashboardPage() {
           )}
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           <Link
             href="/dashboard/settings"
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#111420] border border-[#212739] text-xs hover:border-[#F5792A]/50 transition-colors"
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs transition-colors ${
+              blenderOnline
+                ? "bg-emerald-950/30 border-emerald-500/40 text-emerald-400"
+                : "bg-[#111420] border-[#212739] text-[#7A86A1] hover:border-[#F5792A]/50"
+            }`}
           >
-            <Radio className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-            <span className="text-[#CCD2E3]">Blender Add-on:</span>
-            <span className="font-mono text-emerald-400">Ready</span>
+            <Radio
+              className={`w-3.5 h-3.5 ${
+                blenderOnline ? "text-emerald-400 animate-pulse" : "text-[#556077]"
+              }`}
+            />
+            <span className="font-mono text-[11px]">
+              {blenderOnline
+                ? blenderStatus === "executing"
+                  ? "⚡ Blender Executing"
+                  : "● Blender Connected"
+                : "○ Blender Offline"}
+            </span>
           </Link>
+
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setIsOnboardingOpen(true)}
+            className="text-xs px-2.5 text-[#A2ACBF] hover:text-white"
+          >
+            <span>Setup Guide</span>
+          </Button>
+
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setIsTemplatesOpen(true)}
+            className="text-xs px-2.5 text-[#00E5FF] hover:bg-[#00E5FF]/10"
+          >
+            <Sparkles className="w-3.5 h-3.5 mr-1" />
+            <span>Templates</span>
+          </Button>
 
           <Button
             size="sm"
@@ -165,7 +213,7 @@ export default function DashboardPage() {
             onClick={() => setIsModalOpen(true)}
             className="text-xs font-semibold px-3.5 shadow-glow-orange"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-4 h-4 mr-1" />
             <span>New Project</span>
           </Button>
 
@@ -188,12 +236,26 @@ export default function DashboardPage() {
       <main className="max-w-7xl mx-auto px-8 py-10 space-y-10">
         {/* Welcome & Stats Row */}
         <div>
-          <h1 className="text-2xl font-extrabold text-white">Welcome back</h1>
-          <p className="text-xs text-[#7A86A1] mt-1">
-            Pick up where you left off or create a new procedural modeling plan.
-          </p>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-extrabold text-white">Welcome back</h1>
+              <p className="text-xs text-[#7A86A1] mt-1">
+                Pick up where you left off or create a new procedural modeling plan.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setIsTemplatesOpen(true)}
+                className="text-xs border-[#262E44] text-[#CCD2E3]"
+              >
+                Browse 3D Templates
+              </Button>
+            </div>
+          </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mt-6">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-5 mt-6">
             <div className="p-5 rounded-2xl bg-[#0E111A] border border-[#202638] flex items-center justify-between">
               <div>
                 <span className="text-xs font-medium text-[#7A86A1] uppercase tracking-wider">
@@ -211,7 +273,7 @@ export default function DashboardPage() {
             <div className="p-5 rounded-2xl bg-[#0E111A] border border-[#202638] flex items-center justify-between">
               <div>
                 <span className="text-xs font-medium text-[#7A86A1] uppercase tracking-wider">
-                  Total Generations
+                  Generations
                 </span>
                 <h3 className="text-2xl font-bold text-white mt-1">
                   {stats.totalGenerations}
@@ -225,12 +287,33 @@ export default function DashboardPage() {
             <div className="p-5 rounded-2xl bg-[#0E111A] border border-[#202638] flex items-center justify-between">
               <div>
                 <span className="text-xs font-medium text-[#7A86A1] uppercase tracking-wider">
-                  Blender Target
+                  Executions
                 </span>
-                <h3 className="text-2xl font-bold text-white mt-1">4.x / 3.6 LTS</h3>
+                <h3 className="text-2xl font-bold text-white mt-1">
+                  {stats.successfulExecutions}
+                </h3>
               </div>
               <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
                 <Zap className="w-5 h-5" />
+              </div>
+            </div>
+
+            <div className="p-5 rounded-2xl bg-[#0E111A] border border-[#202638] flex items-center justify-between">
+              <div>
+                <span className="text-xs font-medium text-[#7A86A1] uppercase tracking-wider">
+                  Blender Bridge
+                </span>
+                <h3 className="text-lg font-bold text-white mt-1 flex items-center gap-1.5">
+                  <span
+                    className={`w-2.5 h-2.5 rounded-full ${
+                      blenderOnline ? "bg-emerald-400 animate-pulse" : "bg-zinc-600"
+                    }`}
+                  />
+                  <span>{blenderOnline ? "Connected" : "Offline"}</span>
+                </h3>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
+                <Radio className="w-5 h-5" />
               </div>
             </div>
           </div>
@@ -238,9 +321,17 @@ export default function DashboardPage() {
 
         {/* Quick Actions Starter Templates */}
         <div>
-          <h2 className="text-xs font-bold uppercase tracking-wider text-[#7A86A1] mb-3">
-            Quick Starter Projects
-          </h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-[#7A86A1]">
+              Quick Starter Projects
+            </h2>
+            <button
+              onClick={() => setIsTemplatesOpen(true)}
+              className="text-xs text-[#F5792A] hover:underline"
+            >
+              View Full Gallery →
+            </button>
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <button
               onClick={() =>
@@ -490,6 +581,22 @@ export default function DashboardPage() {
           </div>
         </form>
       </Modal>
+
+      {/* Onboarding Wizard Modal */}
+      <OnboardingWizardModal
+        isOpen={isOnboardingOpen}
+        onClose={() => setIsOnboardingOpen(false)}
+      />
+
+      {/* Template Gallery Modal */}
+      <TemplateGalleryModal
+        isOpen={isTemplatesOpen}
+        onClose={() => setIsTemplatesOpen(false)}
+        onSelectTemplate={(tmpl) => {
+          handleQuickCreate(tmpl.title, tmpl.description);
+          setIsTemplatesOpen(false);
+        }}
+      />
     </div>
   );
 }
