@@ -81,6 +81,22 @@ export async function POST(req: NextRequest) {
       warnings: result.warnings,
     });
 
+    // Query relevant marketplace templates for AI recommendation (never auto-executed)
+    let recommendedTemplates: Array<{ id: string; title: string; slug: string; category: string; rating: number }> = [];
+    try {
+      const { getMarketplaceTemplates } = await import("@/lib/supabase/db-marketplace");
+      const matched = await getMarketplaceTemplates({ search: sanitized.slice(0, 40) });
+      recommendedTemplates = matched.slice(0, 2).map((t) => ({
+        id: t.id,
+        title: t.title,
+        slug: t.slug,
+        category: t.category,
+        rating: t.rating,
+      }));
+    } catch {
+      // Non-blocking recommendation failure
+    }
+
     return NextResponse.json({
       generationId: savedGeneration.id,
       projectId: savedGeneration.projectId,
@@ -89,6 +105,7 @@ export async function POST(req: NextRequest) {
       plan: result.plan,
       code: result.code,
       warnings: result.warnings,
+      recommendedTemplates,
       createdAt: savedGeneration.createdAt,
     });
   } catch (error: unknown) {

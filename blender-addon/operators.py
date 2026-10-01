@@ -2,6 +2,7 @@ import bpy
 from .api_client import SculptorApiClient
 from .executor import execute_blender_code
 from .compat import get_blender_version_string
+from .realtime_client import SculptorRealtimeClient
 
 class SculptorProperties(bpy.types.PropertyGroup):
     prompt: bpy.props.StringProperty(
@@ -44,6 +45,21 @@ class SculptorProperties(bpy.types.PropertyGroup):
         name="Auto Heartbeat",
         description="Automatically report connection and status to SculptorAI Studio",
         default=True,
+    )
+    realtime_mode: bpy.props.BoolProperty(
+        name="Realtime Stream",
+        description="Listen for instant cloud task events over WebSocket/SSE",
+        default=True,
+    )
+    realtime_status: bpy.props.StringProperty(
+        name="Realtime Status",
+        default="OFFLINE",
+    )
+    execution_progress: bpy.props.IntProperty(
+        name="Execution Progress",
+        default=0,
+        min=0,
+        max=100,
     )
 
 
@@ -117,17 +133,36 @@ class SCULPTOR_OT_approve_and_run(bpy.types.Operator):
         if props.active_execution_id:
             SculptorApiClient.start_task(props.active_execution_id, context=context)
 
+        props.execution_progress = 25
+        if props.active_execution_id:
+            SculptorApiClient.report_execution_progress(
+                props.active_execution_id,
+                percent=25,
+                stage="Compiling",
+                message="Validating and parsing bpy operations",
+                context=context
+            )
+
         # Execute code inside Blender runtime with undo support
         exec_result = execute_blender_code(code)
 
         props.is_busy = False
         if exec_result["success"]:
+            props.execution_progress = 100
             props.last_status = "Execution Successful"
             props.last_error = ""
             self.report({'INFO'}, f"Script executed successfully in {exec_result['duration_ms']}ms.")
             
             # Report real result back to SculptorAI server
             if props.active_execution_id:
+                SculptorRealtimeClient.mark_task_executed(props.active_execution_id)
+                SculptorApiClient.report_execution_progress(
+                    props.active_execution_id,
+                    percent=100,
+                    stage="Done",
+                    message="Completed procedural generation",
+                    context=context
+                )
                 SculptorApiClient.report_execution_result(
                     props.active_execution_id,
                     status="success",
@@ -137,6 +172,7 @@ class SCULPTOR_OT_approve_and_run(bpy.types.Operator):
                     context=context
                 )
         else:
+            props.execution_progress = 0
             props.last_status = "Execution Error"
             props.last_error = exec_result["error"]
             self.report({'ERROR'}, "Blender execution error encountered.")
@@ -152,6 +188,33 @@ class SCULPTOR_OT_approve_and_run(bpy.types.Operator):
                     context=context
                 )
 
+        return {'FINISHED'}
+
+class SCULPTOR_OT_toggle_realtime(bpy.types.Operator):
+    bl_idname = "sculptor.toggle_realtime"
+    bl_label = "Toggle Realtime Stream"
+    bl_description = "Connect or disconnect live WebSocket/SSE stream to cloud studio"
+
+    def execute(self, context):
+        props = context.scene.sculptor_props
+        if SculptorRealtimeClient.is_running():
+            SculptorRealtimeClient.stop()
+            props.realtime_status = "OFFLINE"
+            self.report({'INFO'}, "Realtime stream disconnected.")
+        else:
+            def on_task(payload):
+                props.generated_code = payload.get("script", "")
+                props.active_execution_id = payload.get("taskId") or payload.get("id", "")
+                props.plan_summary = payload.get("prompt", "Cloud Task")
+                props.last_status = "Task Received via Stream"
+
+            SculptorRealtimeClient.start(
+                project_id=props.active_project_id,
+                on_task_received=on_task,
+                context=context
+            )
+            props.realtime_status = "CONNECTED"
+            self.report({'INFO'}, "Realtime stream activated.")
         return {'FINISHED'}
 
 class SCULPTOR_OT_fix_error(bpy.types.Operator):
@@ -353,7 +416,20 @@ def sculptor_heartbeat_timer():
                     current_project=props.active_project_id,
                     current_execution=props.active_execution_id,
                 )
+            # Sync realtime connection status
+            props.realtime_status = SculptorRealtimeClient.get_status()
+            if props.realtime_mode and not SculptorRealtimeClient.is_running() and props.active_project_id:
+                def on_task(payload):
+                    props.generated_code = payload.get("script", "")
+                    props.active_execution_id = payload.get("taskId") or payload.get("id", "")
+                    props.plan_summary = payload.get("prompt", "Cloud Task")
+                    props.last_status = "Task Received via Stream"
+
+                SculptorRealtimeClient.start(
+                    project_id=props.active_project_id,
+                    on_task_received=on_task
+                )
     except Exception:
         pass
-    return 20.0  # Run every 20 seconds
+    return 15.0  # Run every 15 seconds
 

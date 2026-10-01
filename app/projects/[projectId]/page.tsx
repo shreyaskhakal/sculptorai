@@ -37,6 +37,11 @@ import {
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { useAuth } from "@/components/auth/AuthProvider";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { CollaboratorsBar } from "@/components/collaboration/CollaboratorsBar";
+import { useProjectRealtime } from "@/lib/realtime/useProjectRealtime";
+import { Store } from "lucide-react";
 
 interface ChatItem {
   id: string;
@@ -71,7 +76,53 @@ export default function WorkspacePage({
   params: { projectId: string };
 }) {
   const { projectId } = params;
-  const { isDemoMode } = useAuth();
+  const { isDemoMode, user } = useAuth();
+  const searchParams = useSearchParams();
+  const executionParamId = searchParams.get("executionId");
+
+  const [remoteSelection, setRemoteSelection] = useState<string | null>(null);
+  const [remoteSelectorName, setRemoteSelectorName] = useState<string | null>(null);
+
+  // Realtime hook for multi-user collaboration & Blender dispatch
+  const {
+    collaborators,
+    broadcastSelection,
+    broadcastCursor,
+    isConnected: isRealtimeConnected,
+  } = useProjectRealtime({
+    projectId,
+    currentUser: user
+      ? {
+          id: user.id,
+          name: user.email?.split("@")[0] || "Artist",
+          role: "owner",
+        }
+      : undefined,
+    onRemoteSelection: (sel) => {
+      setRemoteSelection(sel.objectName);
+      setRemoteSelectorName(sel.displayName);
+    },
+    onBlenderHeartbeat: () => {
+      setBlenderStatus("CONNECTED");
+    },
+    onExecutionProgress: (ev) => {
+      setExecutionStatus("running");
+      if (ev.stage) {
+        setLoadingStage(`Blender: ${ev.stage} (${ev.percent}%)`);
+      }
+    },
+    onExecutionCompleted: (ev) => {
+      setExecutionStatus(ev.status === "success" ? "success" : "error");
+      if (ev.stdout) setExecutionStdout(ev.stdout);
+      if (ev.stderr) setExecutionStderr(ev.stderr);
+      if (ev.durationMs) setExecutionDuration(ev.durationMs);
+      showToast(
+        ev.status === "success"
+          ? "Blender task executed successfully!"
+          : "Blender execution error."
+      );
+    },
+  });
 
   // Navigation & View Toggles
   const [activeSidebarView, setActiveSidebarView] = useState<
@@ -171,6 +222,22 @@ export default function WorkspacePage({
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
   };
+
+  // 0. Load Marketplace Injected Execution (if routed via ?executionId=...)
+  useEffect(() => {
+    if (!executionParamId) return;
+    fetch(`/api/executions/${executionParamId}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.execution?.script) {
+          setActiveCode(data.execution.script);
+          setActiveExecutionId(data.execution.id);
+          setActiveRightTab("code");
+          showToast("Marketplace template injected into workspace!");
+        }
+      })
+      .catch((err) => console.error("Error loading execution task:", err));
+  }, [executionParamId]);
 
   // 1. Fetch Initial Data (Project, Generations, Messages, Versions)
   useEffect(() => {
@@ -688,8 +755,28 @@ export default function WorkspacePage({
             </button>
           </div>
 
-          {/* Right: Actions, Modals, Exports */}
+          {/* Right: Collaborators Presence, Marketplace, Actions, Modals, Exports */}
           <div className="flex items-center gap-2">
+            <CollaboratorsBar
+              projectId={projectId}
+              collaborators={collaborators}
+              remoteSelection={remoteSelection}
+              remoteSelectorName={remoteSelectorName}
+              isOwner={true}
+            />
+
+            <Link href="/marketplace">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-xs text-[#A2ACBF] hover:text-[#00E5FF] flex items-center gap-1.5"
+                title="Browse Community Marketplace"
+              >
+                <Store className="w-3.5 h-3.5 text-cyan-400" />
+                <span className="hidden sm:inline">Marketplace</span>
+              </Button>
+            </Link>
+
             <Button
               size="sm"
               variant="ghost"
@@ -781,7 +868,10 @@ export default function WorkspacePage({
               <ThreeDViewer
                 modelPlan={activePlan}
                 sceneSnapshot={sceneSnapshot}
-                onSelectObject={setSelectedObjectName}
+                onSelectObject={(objName) => {
+                  setSelectedObjectName(objName);
+                  broadcastSelection(objName);
+                }}
                 selectedObjectName={selectedObjectName}
               />
             </div>

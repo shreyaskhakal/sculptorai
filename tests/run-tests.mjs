@@ -2,6 +2,9 @@ import { execSync } from "node:child_process";
 import { testDatabasePersistence } from "./database/persistence.test.mjs";
 import { testExecutionLifecycle } from "./execution/lifecycle.test.mjs";
 import { testEndToEndWorkflow } from "./e2e/end-to-end.test.mjs";
+import { testRealtimeBroadcast } from "./realtime/broadcast.test.mjs";
+import { testRBACMatrix } from "./security/rbac.test.mjs";
+import { testMarketplaceSecurity } from "./marketplace/security_pipeline.test.mjs";
 
 console.log("=================================================");
 console.log("  SCULPTOR AI — MASTER TEST SUITE RUNNER         ");
@@ -39,9 +42,21 @@ async function runAllSuites() {
 
     // 8. Run Blender Python Scripts Test
     execSync("python tests/blender/scripts.test.py", { stdio: "inherit" });
+    console.log("");
+
+    // 9. Run Supabase Realtime Broadcast & Idempotency Test
+    await testRealtimeBroadcast();
+    console.log("");
+
+    // 10. Run Multi-User Project RBAC Permission Matrix Test
+    await testRBACMatrix();
+    console.log("");
+
+    // 11. Run Marketplace Capability Scanner & Security Test
+    await testMarketplaceSecurity();
 
     console.log("\n=================================================");
-    console.log("  ✓ ALL 8 TEST SUITES PASSED 100% CLEANLY!       ");
+    console.log("  ✓ ALL 11 TEST SUITES PASSED 100% CLEANLY!      ");
     console.log("=================================================");
   } catch (error) {
     console.error("Test execution failed:", error);

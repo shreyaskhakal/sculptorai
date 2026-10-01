@@ -176,6 +176,33 @@ class SculptorApiClient:
             return False, {"error": str(e)}
 
     @staticmethod
+    def report_execution_progress(execution_id, percent, stage="Executing", message="", context=None):
+        """
+        Reports execution progress (0-100%) to server for real-time progress bar.
+        """
+        if not execution_id:
+            return True, {}
+        base_url = get_api_url(context)
+        url = f"{base_url}/api/executions/{execution_id}/progress"
+        headers = get_auth_headers(context)
+
+        payload = {
+            "percent": percent,
+            "stage": stage,
+            "message": message,
+        }
+
+        req_data = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(url, data=req_data, headers=headers, method="POST")
+
+        try:
+            with urllib.request.urlopen(req, timeout=5) as response:
+                data = json.loads(response.read().decode('utf-8'))
+                return True, data
+        except Exception as e:
+            return False, {"error": str(e)}
+
+    @staticmethod
     def send_heartbeat(status="IDLE", device_id=None, device_name=None, current_project=None, current_execution=None, context=None):
         """
         Sends periodic heartbeat to the SculptorAI server to report device status.

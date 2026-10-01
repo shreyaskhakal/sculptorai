@@ -27,6 +27,7 @@ classes = (
     operators.SCULPTOR_OT_send_snapshot,
     operators.SCULPTOR_OT_send_heartbeat,
     operators.SCULPTOR_OT_export_glb,
+    operators.SCULPTOR_OT_toggle_realtime,
     panels.VIEW3D_PT_sculptor_ai,
 )
 

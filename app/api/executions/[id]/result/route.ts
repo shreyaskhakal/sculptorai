@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ExecutionResultSchema } from "@/lib/validation/api";
 import { getAuthenticatedUser } from "@/lib/supabase/server-auth";
 import { db } from "@/lib/supabase/db";
+import { broadcastExecutionCompleted } from "@/lib/realtime/broadcast";
 
 export async function POST(
   req: NextRequest,
@@ -38,6 +39,17 @@ export async function POST(
     if (!completed) {
       return NextResponse.json({ error: "Execution not found or access denied" }, { status: 404 });
     }
+
+    // Broadcast execution completion to Web Studio and collaborators
+    await broadcastExecutionCompleted({
+      executionId: completed.id,
+      projectId: completed.projectId,
+      status: completed.status as "success" | "failed",
+      stdout: completed.stdout || "",
+      stderr: completed.stderr || "",
+      durationMs: completed.durationMs || 0,
+      completedAt: completed.completedAt || new Date().toISOString(),
+    });
 
     return NextResponse.json({
       success: true,

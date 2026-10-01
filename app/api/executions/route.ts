@@ -3,6 +3,7 @@ import { ExecutionCreateSchema } from "@/lib/validation/api";
 import { getAuthenticatedUser } from "@/lib/supabase/server-auth";
 import { db } from "@/lib/supabase/db";
 import { validateBlenderScript } from "@/lib/blender/validator";
+import { broadcastTaskCreated } from "@/lib/realtime/broadcast";
 
 export async function POST(req: NextRequest) {
   try {
@@ -49,6 +50,17 @@ export async function POST(req: NextRequest) {
       blenderVersion: blenderVersion || "4.x",
       script: script || "",
       prompt: prompt || "Model Generation",
+    });
+
+    // Realtime broadcast to Blender and collaborators
+    await broadcastTaskCreated({
+      taskId: record.id,
+      projectId: record.projectId,
+      generationId: record.generationId,
+      blenderVersion: record.blenderVersion,
+      prompt: record.prompt,
+      script: record.script,
+      createdAt: record.createdAt,
     });
 
     return NextResponse.json(record, { status: 201 });

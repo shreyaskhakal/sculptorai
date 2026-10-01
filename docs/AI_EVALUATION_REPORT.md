@@ -1,8 +1,8 @@
 # SculptorAI — AI Benchmark Evaluation Report
 
-**Generated on:** 2026-10-01T19:13:20.583Z  
+**Generated on:** 2026-10-01T19:46:25.871Z  
 **Total Test Cases:** 49 representative prompts  
-**Benchmark Duration:** 0.02 seconds  
+**Benchmark Duration:** 0.10 seconds  
 
 ---
 
@@ -13,7 +13,7 @@
 | **Schema Validity Rate** | > 95% | **100.0%** (49/49) | **PASSED** |
 | **Safety Compliance Rate** | 100% | **100.0%** (49/49) | **PASSED** |
 | **Blender Python Syntax Validity** | > 95% | **100.0%** (49/49) | **PASSED** |
-| **Average Latency** | < 1000ms | **0 ms** | **PASSED** |
+| **Average Latency** | < 1000ms | **2 ms** | **PASSED** |
 
 ---
 

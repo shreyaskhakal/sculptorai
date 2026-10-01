@@ -173,3 +173,43 @@ However, moving from an advanced prototype to a premier commercial product ("AI 
   - Onboarding Setup Wizard.
   - Comprehensive AI evaluation benchmark (`tests/ai-evals/`).
   - Full documentation suite (`ARCHITECTURE.md`, `DEPLOYMENT.md`, `END_TO_END.md`, `SECURITY.md`, etc.).
+
+---
+
+## 10. Architectural Expansion: Realtime, Collaboration & Marketplace Audit
+
+### 10.1 Realtime Communication Foundation
+- **Current State**: Web Studio currently polls `/api/executions` and `/api/blender/status`.
+- **Target Architecture**: Direct Supabase Realtime WebSocket transport (`Broadcast` and `Presence`) over private authenticated channels.
+- **Channels**:
+  - `sculptor:project:{projectId}` (project-level task creation, scene changes)
+  - `sculptor:execution:{executionId}` (live execution logs and progress streaming)
+  - `sculptor:blender:{deviceId}` (device heartbeat, command dispatch)
+  - `sculptor:collaboration:{projectId}` (multi-user presence, remote cursors, object selection)
+- **HTTP Fallback**: If WebSocket connection drops, automatically transition to HTTP polling (10s interval), seamlessly re-establishing WebSocket on reconnect.
+
+### 10.2 Multi-User Project RBAC & Authorization
+- **Current State**: Single `user_id` ownership on `projects`. No collaborative sharing or permission roles.
+- **Required Roles**:
+  - `owner`: Full administrative rights (delete, invite, role changes, all actions).
+  - `editor`: Can generate AI plans, edit code, execute tasks, approve tasks, comment.
+  - `commenter`: Can view project, view scene, use AI chat for discussion, leave comments.
+  - `viewer`: Read-only access to project, scene, code, and 3D preview.
+- **Enforcement**: Must be enforced server-side and backed by PostgreSQL Row Level Security (RLS) on `projects`, `generations`, `executions`, and `project_members`.
+
+### 10.3 Realtime Collaboration & Scene Awareness
+- **Presence**: Real-time participant roster showing user names, avatars, active panels, and connection status (`🟢 Online`, `🟡 Idle`).
+- **Cursor Sync**: Throttled / debounced broadcast of Monaco editor cursor positions and line selections.
+- **Scene Selection Sync**: Visual indication in 3D viewer when another user selects a mesh (e.g., `Rahul selected: Chair_01`).
+
+### 10.4 Community Template Marketplace & Creator Ecosystem
+- **Database Model**:
+  - `templates`: Metadata, slug, category, difficulty, visibility (`draft`, `pending_review`, `published`, `archived`), download counts, ratings.
+  - `template_versions`: Version string, Python script, parameter schema, changelog.
+  - `template_reviews` & `template_favorites`: Creator community interaction.
+  - `creator_profiles`: Bio, avatar, badge, aggregated stats.
+- **Marketplace Security Pipeline**:
+  - Capability-based verification: each template declares required capabilities (e.g. `materials`, `geometry`, `modifiers`, `blender_api`).
+  - AST security scanner strictly tests that the Python code matches declared capabilities and rejects any filesystem, network, subprocess, or dynamic reflection operations.
+- **Template -> Project Execution**: One-click "Use Template" action copies code and parameters directly into the user's project execution queue for safe Blender review and execution.
+

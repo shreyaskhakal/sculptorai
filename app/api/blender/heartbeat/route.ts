@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/supabase/server-auth";
 import { db } from "@/lib/supabase/db";
+import { broadcastBlenderHeartbeat } from "@/lib/realtime/broadcast";
 
 export async function POST(req: NextRequest) {
   try {
@@ -33,6 +34,18 @@ export async function POST(req: NextRequest) {
       status: status || "IDLE",
       currentProjectId,
       currentExecutionId,
+    });
+
+    // Realtime broadcast of device health & status
+    await broadcastBlenderHeartbeat({
+      deviceId,
+      deviceName: deviceName || "Blender Desktop",
+      blenderVersion: blenderVersion || "4.x",
+      addonVersion: addonVersion || "1.1.0",
+      status: (status || "IDLE") as any,
+      currentProjectId,
+      currentExecutionId,
+      lastSeen: new Date().toISOString(),
     });
 
     return NextResponse.json({

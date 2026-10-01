@@ -36,6 +36,19 @@ class VIEW3D_PT_sculptor_ai(bpy.types.Panel):
         else:
             col_ctx.label(text="Task: None Active", icon='CHECKBOX_DEHLT')
 
+        # Realtime Stream & Fallback Status
+        row_rt = box_header.row(align=True)
+        if props.realtime_status == "CONNECTED":
+            row_rt.label(text="⚡ Stream: Active", icon='NONE')
+        elif props.realtime_status == "RECONNECTING":
+            row_rt.label(text="🟡 Stream: Reconnecting", icon='NONE')
+        else:
+            row_rt.label(text="○ Stream: Polling Mode", icon='NONE')
+        row_rt.operator("sculptor.toggle_realtime", text="Stream", icon='RADIOBUT_ON' if props.realtime_status == 'CONNECTED' else 'RADIOBUT_OFF')
+
+        if props.execution_progress > 0 and props.execution_progress < 100:
+            box_header.prop(props, "execution_progress", text="Progress", slider=True)
+
         # 2. Web Sync & Scene Intelligence Actions
         row_sync = layout.row(align=True)
         row_sync.operator("sculptor.fetch_task", text="Sync Tasks", icon='IMPORT')
