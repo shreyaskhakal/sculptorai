@@ -7,13 +7,15 @@
 
 ## 1. Product Overview
 
-SculptorAI is **not** a generic black-box mesh generator. It understands the actual mechanics, geometry pipelines, and procedural workflows of Blender:
-- **Understands Blender Workflows**: Generates native procedural scripts utilizing collections, object hierarchies, modifiers (Bevel, Subsurf, Boolean), and Principled BSDF node shaders.
-- **Multimodal Computer Vision**: Analyzes reference images, decomposing them into primitive components, proportions, and procedural step-by-step modeling plans with honest uncertainty disclosures.
-- **AI Error Diagnoser & Auto-Fixer**: When Blender throws an exception or syntax error, SculptorAI diagnoses the exact API mismatch, writes a minimal surgical patch, and previews the fix for human review.
-- **Mandatory Approval Gate**: AI code is **never** silently executed. The artist reviews code in Monaco Editor or the Blender sidebar and explicitly clicks **Approve & Run**.
-- **Native Blender Add-on**: A dedicated 3D Viewport sidebar panel communicating directly with the SculptorAI engine, compatible with both **Blender 3.6 LTS** and **Blender 4.x**.
-- **Real-Time Persistent Workflow**: No in-memory state or simulated timeouts. Everything—projects, generations, chats, executions, and execution events—persists in Supabase PostgreSQL with strict Row Level Security (RLS).
+SculptorAI is **not** a generic black-box mesh generator. It is a serious commercial-grade operating layer and procedural copilot that understands the geometry pipelines, modifiers, and shading workflows of Blender:
+- **Interactive Three.js WebGL 3D Viewport**: Live web-based 3D preview with orbit/pan/zoom, shading modes (Wireframe, Solid, Material), studio lighting presets, RGB coordinate axes, and turntable auto-rotation.
+- **Modern AI Model Architecture**: Centralized model router with configurable models across fast generation, deep reasoning, multimodal vision, and traceback debugging.
+- **Scene-Aware Conversational Editing**: Blender add-on serializes compact scene snapshots; the AI outputs surgical `ScenePatch` operations without regenerating scenes from scratch.
+- **Multimodal Computer Vision**: Decomposes reference images into primitive blockouts, materials, and step-by-step procedural modeling instructions.
+- **AI Error Diagnoser & Auto-Fixer**: When Blender throws an exception, SculptorAI analyzes the traceback and writes a minimal surgical patch with context-mode guard checks.
+- **Mandatory AST Safety Validator**: Strict Abstract Syntax Tree analysis blocks destructive OS commands, filesystem writes, subprocess execution, dynamic reflection, and network exfiltration.
+- **Native Blender Add-on (v1.1.0)**: Background heartbeat telemetry (20s interval), compact scene snapshot export, atomic task claiming, and native GLB export.
+- **Comprehensive Quality Assurance**: 8 master automated test suites and a 50-prompt AI Benchmark evaluation suite (`npm run test:evals`) passing with 100% compliance.
 
 ---
 
@@ -24,45 +26,39 @@ USER / ARTIST
       ↓
 Natural-language prompt or reference image
       ↓
-AI understands the modeling request (Google Gemini 1.5)
+AI Model Router (Fast Generation / High-Reasoning / Vision)
       ↓
-Structured Blender modeling plan (Zod validated)
+Structured 3D Modeling Plan / Scene Patch (Zod validated)
       ↓
-Generated Blender Python / bpy
+Executable Blender Python / bpy
       ↓
-AST Security Validation (Fail-closed)
+AST Security Capability Sandbox (Low Risk Verification)
       ↓
-Persisted to Supabase PostgreSQL (Versioned generation)
+Real-time Three.js WebGL 3D Preview + Monaco Code/Diff Inspector
       ↓
-Human reviews generated code in Monaco Editor
+Artist Reviews & Clicks "Approve & Run" (status: pending)
       ↓
-Explicit "Send to Blender" / "Approve & Run" (status: pending)
+Native Blender Add-on Claims Task (status: claimed)
       ↓
-Native Blender add-on atomically claims task (status: claimed)
+Blender Executes Script with Undo Push (status: running)
       ↓
-Blender user reviews code in 3D Viewport sidebar
+Execution Results Reported to Cloud (stdout, stderr, duration)
       ↓
-Artist clicks "Approve & Run in Blender" (status: running)
-      ↓
-Blender executes code with Undo push
-      ↓
-Real execution results reported back to server (status: success / error, stdout, duration)
-      ↓
-Web Studio updates live with real stdout and duration
+Compact Scene Snapshot + GLB Model Synced to Web Studio
       ↓
 [If Blender throws an error]:
-AI diagnoses stderr traceback → Corrected code preview → Human approval → Re-execution
+AI Debugger diagnoses traceback → Surgical fix preview → Approval → Re-execution
 ```
 
 ---
 
 ## 3. Technology Stack
 
-- **Frontend**: Next.js 14 (App Router), TypeScript, Tailwind CSS, Monaco Editor for Python, Lucide Icons.
+- **Frontend**: Next.js 14 (App Router), React 18, TypeScript, Three.js WebGL Viewer, Tailwind CSS, Monaco Editor for Python, Lucide Icons.
 - **Backend**: Next.js Serverless API routes with Zod runtime validation, sliding-window rate limiting, and server-side Supabase SSR authentication.
-- **AI Engine**: Google Gemini API (`gemini-1.5-flash` / `gemini-1.5-pro`) with configurable model environment variables, Zod-enforced structured JSON output, and schema retry logic.
+- **AI Engine**: Centralized Model Router (`lib/ai/model-router.ts`), Google Gemini API (`gemini-1.5-flash` / `gemini-1.5-pro`), structured JSON schemas, exponential retry backoff, and cost/token tracking.
 - **Database & Auth**: Supabase PostgreSQL with strict Row Level Security (RLS) policies, database triggers, and audit event tracking.
-- **Blender Desktop**: Python 3.10+ / Blender 3.6 LTS & 4.x native add-on (`bpy` API).
+- **Blender Desktop**: Python 3.10+ / Blender 4.x & 3.6 LTS native add-on (`bpy` API) with background heartbeat and scene snapshot serialization.
 
 ---
 
