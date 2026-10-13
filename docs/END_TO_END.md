@@ -72,7 +72,7 @@ sequenceDiagram
    - `sanitizePrompt()` removes null bytes, system prompt override tags (`<|system|>`), and control characters.
    - Sliding-window rate limiting verifies the user has not exceeded 30 requests/minute.
 3. **Structured Plan Generation**:
-   - The request is dispatched to `GeminiAIProvider` using `GEMINI_MODEL_GENERATION` (defaults to `gemini-1.5-flash`).
+   - The request is dispatched to `GeminiAIProvider` using `selectModelForTask("generation")` (defaults to `gemini-2.0-flash` or `gemini-1.5-pro` for complex spatial prompts).
    - The model is instructed using `SYSTEM_PROMPT_BLENDER_ARCHITECT` with `responseMimeType: "application/json"`.
    - The JSON payload is validated using Zod (`ModelPlanSchema`). If malformed, the system performs a corrective retry before returning a safe fallback.
 4. **Fail-Closed Security Validation**:

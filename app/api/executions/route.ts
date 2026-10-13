@@ -37,11 +37,30 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Resolve project ID (either passed in body or extracted from generation)
-    const projectId = body.projectId || (await (async () => {
+    // Resolve and verify project ownership
+    let projectId = body.projectId;
+    if (projectId) {
+      const project = await db.getProjectById(projectId, user.id);
+      if (!project) {
+        return NextResponse.json(
+          { error: "Project not found or access denied" },
+          { status: 404 }
+        );
+      }
+    } else {
       const projects = await db.getProjects(user.id);
-      return projects[0]?.id || "proj_default";
-    })());
+      if (projects.length === 0) {
+        const createdProj = await db.createProject({
+          userId: user.id,
+          name: "Blender AI Project",
+          description: "Workspace created from execution",
+          blenderVersion: blenderVersion || "4.x",
+        });
+        projectId = createdProj.id;
+      } else {
+        projectId = projects[0].id;
+      }
+    }
 
     const record = await db.createExecution({
       generationId,
@@ -63,7 +82,7 @@ export async function POST(req: NextRequest) {
       createdAt: record.createdAt,
     });
 
-    return NextResponse.json(record, { status: 201 });
+    return NextResponse.json({ ...record, execution: record }, { status: 201 });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to create execution";
     return NextResponse.json({ error: msg }, { status: 500 });

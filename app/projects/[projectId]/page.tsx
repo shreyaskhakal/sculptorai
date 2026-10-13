@@ -76,12 +76,23 @@ export default function WorkspacePage({
   params: { projectId: string };
 }) {
   const { projectId } = params;
-  const { isDemoMode, user } = useAuth();
+  const { isDemoMode, user, session } = useAuth();
   const searchParams = useSearchParams();
   const executionParamId = searchParams.get("executionId");
 
   const [remoteSelection, setRemoteSelection] = useState<string | null>(null);
   const [remoteSelectorName, setRemoteSelectorName] = useState<string | null>(null);
+
+  const getAuthHeaders = (): Record<string, string> => {
+    const headers: Record<string, string> = {};
+    if (session?.access_token) {
+      headers["Authorization"] = `Bearer ${session.access_token}`;
+    } else if (isDemoMode) {
+      headers["Authorization"] = "Bearer demo-token";
+      headers["x-demo-mode"] = "true";
+    }
+    return headers;
+  };
 
   // Realtime hook for multi-user collaboration & Blender dispatch
   const {
@@ -242,9 +253,10 @@ export default function WorkspacePage({
   // 1. Fetch Initial Data (Project, Generations, Messages, Versions)
   useEffect(() => {
     let isMounted = true;
+    const authHeaders = getAuthHeaders();
 
     // Load Project Details
-    fetch(`/api/projects/${projectId}`)
+    fetch(`/api/projects/${projectId}`, { headers: authHeaders })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (isMounted && data) {
@@ -254,7 +266,7 @@ export default function WorkspacePage({
       .catch((err) => console.error("Error loading project:", err));
 
     // Load Persistent Generations
-    fetch(`/api/projects/${projectId}/generations`)
+    fetch(`/api/projects/${projectId}/generations`, { headers: authHeaders })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (isMounted && data && Array.isArray(data.generations) && data.generations.length > 0) {
@@ -279,7 +291,7 @@ export default function WorkspacePage({
       .catch((err) => console.error("Error loading generations:", err));
 
     // Load Versions
-    fetch(`/api/versions?projectId=${projectId}`)
+    fetch(`/api/versions?projectId=${projectId}`, { headers: authHeaders })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (isMounted && data?.versions) {
@@ -289,7 +301,7 @@ export default function WorkspacePage({
       .catch(console.error);
 
     // Load Persistent Chat Messages
-    fetch(`/api/projects/${projectId}/messages`)
+    fetch(`/api/projects/${projectId}/messages`, { headers: authHeaders })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (isMounted && data && Array.isArray(data.messages) && data.messages.length > 0) {
@@ -312,13 +324,13 @@ export default function WorkspacePage({
     return () => {
       isMounted = false;
     };
-  }, [projectId]);
+  }, [projectId, session?.access_token, isDemoMode]);
 
   // 2. Continuous Blender Heartbeat & Status Polling
   useEffect(() => {
     const checkBlenderStatus = async () => {
       try {
-        const res = await fetch("/api/blender/status");
+        const res = await fetch("/api/blender/status", { headers: getAuthHeaders() });
         if (res.ok) {
           const data = await res.json();
           if (data.status) setBlenderStatus(data.status);
@@ -331,7 +343,7 @@ export default function WorkspacePage({
     checkBlenderStatus();
     const timer = setInterval(checkBlenderStatus, 8000);
     return () => clearInterval(timer);
-  }, []);
+  }, [session?.access_token, isDemoMode]);
 
   // 3. Real Execution Polling Lifecycle
   useEffect(() => {
@@ -347,7 +359,7 @@ export default function WorkspacePage({
 
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(`/api/executions?id=${activeExecutionId}`);
+        const res = await fetch(`/api/executions?id=${activeExecutionId}`, { headers: getAuthHeaders() });
         if (!res.ok) return;
 
         const data = await res.json();
@@ -422,7 +434,7 @@ export default function WorkspacePage({
         setLoadingStage("Analyzing Reference Geometry");
         const res = await fetch("/api/analyze-image", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...getAuthHeaders() },
           body: JSON.stringify({
             projectId,
             prompt,
@@ -455,7 +467,7 @@ export default function WorkspacePage({
         setLoadingStage("Planning Surgical Scene Modifications");
         const res = await fetch("/api/ai/edit", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...getAuthHeaders() },
           body: JSON.stringify({
             projectId,
             prompt,
@@ -504,7 +516,7 @@ export default function WorkspacePage({
         setLoadingStage("Generating Verified Blender Python");
         const res = await fetch("/api/generate", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...getAuthHeaders() },
           body: JSON.stringify({
             projectId,
             prompt,
@@ -550,7 +562,7 @@ export default function WorkspacePage({
     try {
       const res = await fetch("/api/executions", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify({
           projectId,
           script: activeCode,
@@ -560,8 +572,9 @@ export default function WorkspacePage({
       });
 
       const data = await res.json();
-      if (res.ok && data.execution) {
-        setActiveExecutionId(data.execution.id);
+      const execRecord = data.execution || (data.id ? data : null);
+      if (res.ok && execRecord?.id) {
+        setActiveExecutionId(execRecord.id);
         setExecutionStatus("pending");
         setActiveRightTab("execution");
         showToast("Task queued for Blender add-on!");
@@ -584,7 +597,7 @@ export default function WorkspacePage({
     try {
       const res = await fetch("/api/debug", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify({
           projectId,
           error: executionStderr || executionStdout,

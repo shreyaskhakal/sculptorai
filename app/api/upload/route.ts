@@ -24,6 +24,17 @@ export async function POST(req: NextRequest) {
     const bucket = (formData.get("bucket") as string) || "reference-images";
     const projectId = (formData.get("projectId") as string) || "default";
 
+    if (projectId !== "default") {
+      const { db } = await import("@/lib/supabase/db");
+      const project = await db.getProjectById(projectId, user.id);
+      if (!project) {
+        return NextResponse.json(
+          { error: "Project not found or access denied" },
+          { status: 404 }
+        );
+      }
+    }
+
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
@@ -46,10 +57,23 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const safeName = `${Date.now()}_${sanitizeFilename(file.name)}`;
-    const storagePath = `${user.id}/${projectId}/${safeName}`;
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
+
+    // 2b. Validate magic bytes (file signature) to prevent MIME spoofing
+    const isPng = buffer.length > 4 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47;
+    const isJpeg = buffer.length > 3 && buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF;
+    const isWebp = buffer.length > 12 && buffer.subarray(0, 4).toString("ascii") === "RIFF" && buffer.subarray(8, 12).toString("ascii") === "WEBP";
+
+    if (!isPng && !isJpeg && !isWebp) {
+      return NextResponse.json(
+        { error: "Invalid file signature. File header does not match a valid PNG, JPEG, or WebP image." },
+        { status: 400 }
+      );
+    }
+
+    const safeName = `${Date.now()}_${sanitizeFilename(file.name)}`;
+    const storagePath = `${user.id}/${projectId}/${safeName}`;
 
     // 3. Supabase Storage integration
     const supabase = createAdminClient();
@@ -69,10 +93,24 @@ export async function POST(req: NextRequest) {
           .getPublicUrl(storagePath);
         url = publicUrlData.publicUrl;
       } else {
+        if (process.env.NODE_ENV === "production") {
+          console.error("[Storage Upload Error]:", uploadError);
+          return NextResponse.json(
+            { error: `Storage upload failed: ${uploadError.message}. Ensure bucket '${bucket}' exists in Supabase Storage.` },
+            { status: 500 }
+          );
+        }
         // Fallback data URI for local dev if bucket not provisioned
         url = `data:${file.type};base64,${buffer.toString("base64")}`;
       }
-    } catch {
+    } catch (storageErr: unknown) {
+      if (process.env.NODE_ENV === "production") {
+        const msg = storageErr instanceof Error ? storageErr.message : String(storageErr);
+        return NextResponse.json(
+          { error: `Storage connection failed: ${msg}` },
+          { status: 500 }
+        );
+      }
       url = `data:${file.type};base64,${buffer.toString("base64")}`;
     }
 

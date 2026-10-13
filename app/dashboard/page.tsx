@@ -40,7 +40,7 @@ interface ProjectItem {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { user, signOut, isDemoMode } = useAuth();
+  const { user, signOut, isDemoMode, session, isLoading } = useAuth();
 
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [stats, setStats] = useState<{
@@ -67,26 +67,45 @@ export default function DashboardPage() {
   const [newProjectVersion, setNewProjectVersion] = useState("4.x");
   const [isCreating, setIsCreating] = useState(false);
 
+  const getAuthHeaders = (): Record<string, string> => {
+    const headers: Record<string, string> = {};
+    if (session?.access_token) {
+      headers["Authorization"] = `Bearer ${session.access_token}`;
+    } else if (isDemoMode) {
+      headers["Authorization"] = "Bearer demo-token";
+      headers["x-demo-mode"] = "true";
+    }
+    return headers;
+  };
+
   const fetchDashboardData = () => {
-    fetch("/api/projects")
-      .then((res) => res.json())
+    const authHeaders = getAuthHeaders();
+
+    fetch("/api/projects", { headers: authHeaders })
+      .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (data.projects) setProjects(data.projects);
+        if (data && Array.isArray(data.projects)) {
+          setProjects(data.projects);
+        } else if (Array.isArray(data)) {
+          setProjects(data);
+        }
       })
       .catch((err) => console.error("Could not fetch projects:", err));
 
-    fetch("/api/dashboard/stats")
-      .then((res) => res.json())
+    fetch("/api/dashboard/stats", { headers: authHeaders })
+      .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (data) setStats(data);
+        if (data && Array.isArray(data.recentGenerations)) {
+          setStats(data);
+        }
       })
       .catch((err) => console.error("Could not fetch stats:", err));
 
-    fetch("/api/blender/status")
-      .then((res) => res.json())
+    fetch("/api/blender/status", { headers: authHeaders })
+      .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data) {
-          setBlenderOnline(data.isOnline);
+          setBlenderOnline(Boolean(data.isOnline));
           setBlenderStatus(data.status || (data.isOnline ? "connected" : "disconnected"));
         }
       })
@@ -94,8 +113,12 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
+    if (!isLoading && !user && !isDemoMode) {
+      router.push("/auth/login");
+      return;
+    }
     fetchDashboardData();
-  }, []);
+  }, [user, isLoading, isDemoMode]);
 
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,7 +128,10 @@ export default function DashboardPage() {
     try {
       const res = await fetch("/api/projects", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders(),
+        },
         body: JSON.stringify({
           name: newProjectName,
           description: newProjectDesc,
@@ -114,7 +140,7 @@ export default function DashboardPage() {
       });
       const created = await res.json();
       if (res.ok) {
-        setProjects((prev) => [created, ...prev]);
+        setProjects((prev) => [created, ...(prev || [])]);
         setIsModalOpen(false);
         setNewProjectName("");
         setNewProjectDesc("");
@@ -138,10 +164,11 @@ export default function DashboardPage() {
     router.push("/auth/login");
   };
 
-  const filteredProjects = projects.filter(
+  const filteredProjects = (projects || []).filter(
     (p) =>
-      p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.description.toLowerCase().includes(searchTerm.toLowerCase())
+      p &&
+      ((p.name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (p.description || "").toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   return (
@@ -475,9 +502,9 @@ export default function DashboardPage() {
         {/* Activity Feed */}
         <div>
           <h2 className="text-lg font-bold text-white mb-4">Recent Generations</h2>
-          {stats.recentGenerations.length > 0 ? (
+          {(stats?.recentGenerations || []).length > 0 ? (
             <div className="rounded-2xl bg-[#0E111A] border border-[#202638] divide-y divide-[#1B202E] overflow-hidden">
-              {stats.recentGenerations.map((gen) => (
+              {(stats?.recentGenerations || []).map((gen) => (
                 <div
                   key={gen.id}
                   className="p-4 flex items-center justify-between hover:bg-[#131622] transition-colors"

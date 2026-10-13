@@ -5,6 +5,7 @@ import { testEndToEndWorkflow } from "./e2e/end-to-end.test.mjs";
 import { testRealtimeBroadcast } from "./realtime/broadcast.test.mjs";
 import { testRBACMatrix } from "./security/rbac.test.mjs";
 import { testMarketplaceSecurity } from "./marketplace/security_pipeline.test.mjs";
+import { testDemoAuthAndTenantSecurity } from "./security/auth_demo_bypass.test.mjs";
 
 console.log("=================================================");
 console.log("  SCULPTOR AI — MASTER TEST SUITE RUNNER         ");
@@ -28,35 +29,39 @@ async function runAllSuites() {
     execSync("node tests/security/auth_rls.test.mjs", { stdio: "inherit" });
     console.log("");
 
-    // 5. Run Database Persistence & Multi-Tenant Isolation
+    // 5. Run Production Demo Mode Defense & Tenant Security Test
+    await testDemoAuthAndTenantSecurity();
+    console.log("");
+
+    // 6. Run Database Persistence & Multi-Tenant Isolation
     await testDatabasePersistence();
     console.log("");
 
-    // 6. Run Execution Pipeline Lifecycle & Atomic Claiming
+    // 7. Run Execution Pipeline Lifecycle & Atomic Claiming
     await testExecutionLifecycle();
     console.log("");
 
-    // 7. Run Complete End-to-End Workflow & Error Repair Loop
+    // 8. Run Complete End-to-End Workflow & Error Repair Loop
     await testEndToEndWorkflow();
     console.log("");
 
-    // 8. Run Blender Python Scripts Test
+    // 9. Run Blender Python Scripts Test
     execSync("python tests/blender/scripts.test.py", { stdio: "inherit" });
     console.log("");
 
-    // 9. Run Supabase Realtime Broadcast & Idempotency Test
+    // 10. Run Supabase Realtime Broadcast & Idempotency Test
     await testRealtimeBroadcast();
     console.log("");
 
-    // 10. Run Multi-User Project RBAC Permission Matrix Test
+    // 11. Run Multi-User Project RBAC Permission Matrix Test
     await testRBACMatrix();
     console.log("");
 
-    // 11. Run Marketplace Capability Scanner & Security Test
+    // 12. Run Marketplace Capability Scanner & Security Test
     await testMarketplaceSecurity();
 
     console.log("\n=================================================");
-    console.log("  ✓ ALL 11 TEST SUITES PASSED 100% CLEANLY!      ");
+    console.log("  ✓ ALL 12 TEST SUITES PASSED 100% CLEANLY!      ");
     console.log("=================================================");
   } catch (error) {
     console.error("Test execution failed:", error);

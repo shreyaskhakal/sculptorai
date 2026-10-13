@@ -1,6 +1,34 @@
 import time
+import re
 import bpy
 from .error_capture import StreamCapture, format_exception_info
+
+DANGEROUS_PATTERNS = [
+    r"\bimport\s+subprocess\b",
+    r"\bfrom\s+subprocess\b",
+    r"\bos\.(system|popen|spawn[lpe]*|exec[lpe]*|fork)\b",
+    r"\b(import\s+socket|from\s+socket|import\s+urllib|import\s+requests|import\s+http)\b",
+    r"\b(eval|exec)\s*\(",
+    r"\b__import__\s*\(",
+    r"\b(getattr|setattr|delattr)\s*\(",
+    r"\b(globals|locals|vars)\s*\(\s*\)",
+    r"__(subclasses|bases|mro|globals|code)__",
+    r"\bimport\s+ctypes\b",
+    r"\bfrom\s+ctypes\b",
+    r"\b__builtins__\b",
+    r"\bshutil\.(rmtree|move)\b",
+    r"\bos\.(remove|unlink|rmdir)\b",
+    r"bpy\.ops\.wm\.(quit_blender|read_factory_settings|read_homefile)\b",
+]
+
+def validate_script_safety(code_string):
+    """
+    Validates untrusted script on desktop client prior to compilation.
+    """
+    for pattern in DANGEROUS_PATTERNS:
+        if re.search(pattern, code_string, re.IGNORECASE):
+            return False, f"Desktop client security violation: detected forbidden pattern '{pattern}'"
+    return True, ""
 
 def execute_blender_code(code_string):
     """
@@ -8,6 +36,16 @@ def execute_blender_code(code_string):
     Pushes an undo step so artists can revert changes with Ctrl+Z.
     Captures stdout, stderr, and any raised exceptions.
     """
+    is_safe, sec_err = validate_script_safety(code_string)
+    if not is_safe:
+        return {
+            "success": False,
+            "stdout": "",
+            "stderr": sec_err,
+            "duration_ms": 0,
+            "error": sec_err,
+        }
+
     start_time = time.perf_counter()
     stdout_text = ""
     stderr_text = ""

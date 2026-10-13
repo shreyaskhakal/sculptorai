@@ -15,7 +15,7 @@ SculptorAI is **not** a generic black-box mesh generator. It is a serious commer
 - **AI Error Diagnoser & Auto-Fixer**: When Blender throws an exception, SculptorAI analyzes the traceback and writes a minimal surgical patch with context-mode guard checks.
 - **Mandatory AST Safety Validator**: Strict Abstract Syntax Tree analysis blocks destructive OS commands, filesystem writes, subprocess execution, dynamic reflection, and network exfiltration.
 - **Native Blender Add-on (v1.1.0)**: Background heartbeat telemetry (20s interval), compact scene snapshot export, atomic task claiming, and native GLB export.
-- **Comprehensive Quality Assurance**: 8 master automated test suites and a 50-prompt AI Benchmark evaluation suite (`npm run test:evals`) passing with 100% compliance.
+- **Comprehensive Quality Assurance**: 12 master automated test suites and a 50-prompt AI Benchmark evaluation suite (`npm run test:evals`) passing with 100% compliance.
 
 ---
 
@@ -56,7 +56,7 @@ AI Debugger diagnoses traceback → Surgical fix preview → Approval → Re-exe
 
 - **Frontend**: Next.js 14 (App Router), React 18, TypeScript, Three.js WebGL Viewer, Tailwind CSS, Monaco Editor for Python, Lucide Icons.
 - **Backend**: Next.js Serverless API routes with Zod runtime validation, sliding-window rate limiting, and server-side Supabase SSR authentication.
-- **AI Engine**: Centralized Model Router (`lib/ai/model-router.ts`), Google Gemini API (`gemini-1.5-flash` / `gemini-1.5-pro`), structured JSON schemas, exponential retry backoff, and cost/token tracking.
+- **AI Engine**: Centralized Model Router (`lib/ai/model-router.ts`), Google Gemini API (`gemini-2.0-flash` fast multimodal / `gemini-1.5-pro` deep spatial reasoning), structured JSON schemas, exponential retry backoff, and cost/token tracking.
 - **Database & Auth**: Supabase PostgreSQL with strict Row Level Security (RLS) policies, database triggers, and audit event tracking.
 - **Blender Desktop**: Python 3.10+ / Blender 4.x & 3.6 LTS native add-on (`bpy` API) with background heartbeat and scene snapshot serialization.
 
@@ -104,7 +104,7 @@ sculptorai/
 │   ├── auth.py                      # Bearer token & endpoint preferences
 │   ├── compat.py                    # Blender 3.6 LTS vs 4.x compatibility bridge
 │   ├── error_capture.py             # Stdout/stderr redirection and traceback capture
-│   ├── executor.py                  # Isolated bpy script execution with Undo push
+│   ├── executor.py                  # Isolated bpy script execution with Undo push & AST safety check
 │   ├── operators.py                 # Interactive UI operators with approval gate
 │   ├── panels.py                    # 3D Viewport sidebar UI (N-panel > SculptorAI)
 │   └── preferences.py               # Add-on preferences (API URL, Bearer Token)
@@ -116,7 +116,7 @@ sculptorai/
 │   ├── execution/                   # Live ExecutionPanel with real terminal output
 │   └── projects/                    # ProjectSidebar with persistent version drawer
 ├── lib/
-│   ├── ai/                          # Gemini adapter, prompts, schemas
+│   ├── ai/                          # Gemini adapter, prompts, schemas, model-router, retry
 │   ├── blender/                     # Hardened AST code safety validator
 │   ├── security/                    # Sliding-window rate limiting, input sanitization
 │   └── supabase/                    # Multi-tenant DB facade, server auth, SSR clients
@@ -124,8 +124,9 @@ sculptorai/
 │   └── migrations/
 │       ├── 20260926_sculptor_init.sql           # Initial tables and RLS
 │       └── 20260928_sculptor_production_mvp.sql # Upgraded execution lifecycle & events
-├── tests/                           # 8 comprehensive automated test suites
+├── tests/                           # 12 comprehensive automated test suites
 ├── docs/
+│   ├── FINAL_GAP_AUDIT.md           # Baseline gap analysis and verification findings
 │   └── END_TO_END.md                # Full architectural walkthrough & sequence diagrams
 ├── AUDIT.md                         # Pre-remediation architectural audit
 ├── IMPLEMENTATION_STATUS.md         # Component completion metrics
@@ -137,10 +138,10 @@ sculptorai/
 ## 5. Quickstart & Installation
 
 ### Prerequisites
-- **Node.js**: v18.17+ or v20+ (Node v24 supported)
+- **Node.js**: v18.17+ or v20+ (Node v22/v24 supported)
 - **Blender**: Blender 3.6 LTS or Blender 4.x
 - **Google Gemini API Key**: [Google AI Studio](https://aistudio.google.com/)
-- **Supabase Account**: [Supabase](https://supabase.com) (or use local fallback mode)
+- **Supabase Account**: [Supabase](https://supabase.com) (or use local sandbox with `DEMO_MODE=true`)
 
 ### Step 1: Clone and Install Dependencies
 ```bash
@@ -157,17 +158,22 @@ cp .env.example .env.local
 Fill in your configuration:
 ```ini
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+# Client publishable or anon key:
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-supabase-publishable-key
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
+
+# Server-side privileged secret key (never expose via NEXT_PUBLIC_*):
+SUPABASE_SECRET_KEY=your-supabase-secret-key
 SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
 
+# Google Gemini API:
 GEMINI_API_KEY=your-gemini-api-key
-GEMINI_MODEL_GENERATION=gemini-1.5-flash
-GEMINI_MODEL_VISION=gemini-1.5-flash
-GEMINI_MODEL_DEBUG=gemini-1.5-flash
+AI_FAST_MODEL=gemini-2.0-flash
+AI_QUALITY_MODEL=gemini-1.5-pro
 
 NEXT_PUBLIC_APP_URL=http://localhost:3000
+DEMO_MODE=false
 ```
-*(Note: If you run SculptorAI without Supabase credentials, it automatically enables **Demo Mode** with a tenant-isolated local persistent store).*
 
 ### Step 3: Run Database Migrations
 In your Supabase project SQL Editor, run:
@@ -178,7 +184,7 @@ In your Supabase project SQL Editor, run:
 ```bash
 npm test
 ```
-All 8 test suites will execute and verify:
+All 12 test suites will execute and verify:
 - Code Safety Validator & Bypass Defense
 - AI Prompt & Structured Output Schemas
 - API Validation & Sanitization
@@ -253,7 +259,9 @@ When running in an environment without configured Supabase credentials or with `
 1. Push the repository to GitHub.
 2. Import the project into [Vercel](https://vercel.com).
 3. Set the Environment Variables (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `GEMINI_API_KEY`, `NEXT_PUBLIC_APP_URL`).
-4. Deploy! Next.js App Router will compile all 17 static and dynamic routes.
+4. Deploy! Next.js App Router will compile all 27 static and dynamic routes.
+
+> **Note on Desktop Execution**: Deploying the web application hosts the collaborative Studio, AI model router, and execution coordination layers in the cloud. Physical 3D modeling and rendering are performed on the artist's computer where Blender is installed with the SculptorAI add-on configured.
 
 ---
 

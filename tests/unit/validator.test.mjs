@@ -77,6 +77,21 @@ if __name__ == '__main__':
   const resTraverse = validateBlenderScript("sub = ().__class__.__bases__[0].__subclasses__()");
   assert.strictEqual(resTraverse.isValid, false, "__subclasses__ was not blocked!");
   console.log("  ✓ Python object model traversal (__subclasses__) blocked");
+
+  // Test 13: Direct __builtins__ namespace access
+  const resBuiltins = validateBlenderScript("b = __builtins__['eval']('1+1')");
+  assert.strictEqual(resBuiltins.isValid, false, "__builtins__ was not blocked!");
+  console.log("  ✓ Direct __builtins__ namespace access blocked");
+
+  // Test 14: ctypes foreign function execution
+  const resCtypes = validateBlenderScript("import ctypes\nctypes.CDLL('libc.so.6')");
+  assert.strictEqual(resCtypes.isValid, false, "ctypes was not blocked!");
+  console.log("  ✓ ctypes foreign function interface blocked");
+
+  // Test 15: Destructive Blender window manager operators
+  const resQuit = validateBlenderScript("import bpy\nbpy.ops.wm.quit_blender()");
+  assert.strictEqual(resQuit.isValid, false, "bpy.ops.wm.quit_blender was not blocked!");
+  console.log("  ✓ Destructive Blender operators (quit_blender) blocked");
 }
 
 testValidator();

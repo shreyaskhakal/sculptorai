@@ -3,10 +3,15 @@ import bpy
 def get_preferences(context=None):
     if context is None:
         context = bpy.context
-    addon_name = __package__.split('.')[0] if '.' in __package__ else "blender-addon"
-    addon = context.preferences.addons.get(addon_name)
-    if addon:
-        return addon.preferences
+    candidates = []
+    if __package__:
+        candidates.append(__package__.split('.')[0])
+        candidates.append(__package__)
+    candidates.extend(["blender-addon", "blender_addon", "sculptorai"])
+    for name in candidates:
+        addon = context.preferences.addons.get(name)
+        if addon and addon.preferences:
+            return addon.preferences
     return None
 
 def get_api_url(context=None):

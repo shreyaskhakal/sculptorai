@@ -71,8 +71,9 @@ Diagnose this error and generate the complete, working, corrected script.
       correctedCode: validated.correctedCode,
     };
   } catch (err: unknown) {
-    console.warn("AI debug failed, falling back gracefully:", err);
-    return generateFallbackDebug(input);
+    console.error("[AI Debug Error]:", err);
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Google Gemini debug analysis failed: ${msg}`);
   }
 }
 

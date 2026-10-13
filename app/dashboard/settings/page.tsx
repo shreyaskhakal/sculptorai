@@ -1,14 +1,35 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { ArrowLeft, Box, Key, Download, Radio, Shield, User } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { useAuth } from "@/components/auth/AuthProvider";
 
 export default function SettingsPage() {
-  const [apiKey, setApiKey] = useState("sculptor_live_99d19a28b03e4811a7");
+  const { session, isDemoMode } = useAuth();
+  const [serverUrl, setServerUrl] = useState("http://localhost:3000");
+  const [apiKey, setApiKey] = useState("demo-token");
   const [showKey, setShowKey] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setServerUrl(window.location.origin);
+    }
+    if (session?.access_token) {
+      setApiKey(session.access_token);
+    } else if (isDemoMode) {
+      setApiKey("demo-token");
+    }
+  }, [session, isDemoMode]);
+
+  const handleCopy = (val: string) => {
+    navigator.clipboard.writeText(val);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
     <div className="min-h-screen bg-[#07080C] text-[#E2E6F2]">
@@ -51,17 +72,27 @@ export default function SettingsPage() {
               <label className="block text-[11px] font-semibold text-[#7A86A1] uppercase tracking-wider mb-1">
                 Server Endpoint URL
               </label>
-              <input
-                type="text"
-                readOnly
-                value="http://localhost:3000"
-                className="w-full px-3 py-2 rounded-lg bg-[#141825] border border-[#23293D] font-mono text-xs text-[#00E5FF] focus:outline-none"
-              />
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  readOnly
+                  value={serverUrl}
+                  className="flex-1 px-3 py-2 rounded-lg bg-[#141825] border border-[#23293D] font-mono text-xs text-[#00E5FF] focus:outline-none"
+                />
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => handleCopy(serverUrl)}
+                  className="text-xs"
+                >
+                  Copy
+                </Button>
+              </div>
             </div>
 
             <div>
               <label className="block text-[11px] font-semibold text-[#7A86A1] uppercase tracking-wider mb-1">
-                Session API Token
+                Session API Token (Bearer Token)
               </label>
               <div className="flex items-center gap-2">
                 <input

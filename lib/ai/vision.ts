@@ -72,8 +72,9 @@ Formulate a structured component breakdown with confidence estimates, geometry a
         : undefined,
     };
   } catch (err: unknown) {
-    console.warn("Vision AI encountered error, falling back gracefully:", err);
-    return generateFallbackImageAnalysis(input);
+    console.error("[Vision AI Error]:", err);
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Google Gemini vision analysis failed: ${msg}`);
   }
 }
 

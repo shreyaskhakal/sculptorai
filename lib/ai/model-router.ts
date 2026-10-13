@@ -13,10 +13,10 @@ export interface ModelRouteConfig {
 }
 
 export function getModelRoutes(): ModelRouteConfig {
-  const defaultFast = process.env.AI_FAST_MODEL || process.env.GEMINI_MODEL_GENERATION || "gemini-1.5-flash";
+  const defaultFast = process.env.AI_FAST_MODEL || process.env.GEMINI_MODEL_GENERATION || "gemini-2.0-flash";
   const defaultReasoning = process.env.AI_QUALITY_MODEL || process.env.GEMINI_MODEL_REASONING || "gemini-1.5-pro";
-  const defaultVision = process.env.GEMINI_MODEL_VISION || "gemini-1.5-flash";
-  const defaultDebug = process.env.GEMINI_MODEL_DEBUG || "gemini-1.5-flash";
+  const defaultVision = process.env.GEMINI_MODEL_VISION || "gemini-2.0-flash";
+  const defaultDebug = process.env.GEMINI_MODEL_DEBUG || "gemini-2.0-flash";
 
   return {
     generation: defaultFast,

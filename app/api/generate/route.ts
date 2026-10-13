@@ -34,22 +34,28 @@ export async function POST(req: NextRequest) {
     let { projectId, prompt, blenderVersion, style, complexity, previousCode, mode } = parsed.data;
     const sanitized = sanitizePrompt(prompt);
 
-    // Resolve or create project if sent from direct add-on session
-    let project = await db.getProjectById(projectId, user.id);
-    if (!project) {
-      // Check if user has any existing projects, or create a default session project
+    // Resolve or verify project ownership
+    if (projectId && projectId !== "blender_addon_session" && projectId !== "default") {
+      const project = await db.getProjectById(projectId, user.id);
+      if (!project) {
+        return NextResponse.json(
+          { error: "Project not found or access denied" },
+          { status: 404 }
+        );
+      }
+    } else {
+      // Direct add-on session or quick generate: resolve default project or create
       const userProjects = await db.getProjects(user.id);
       if (userProjects.length > 0) {
-        project = userProjects[0];
-        projectId = project.id;
+        projectId = userProjects[0].id;
       } else {
-        project = await db.createProject({
+        const createdProject = await db.createProject({
           userId: user.id,
           name: "Blender AI Project",
           description: "Workspace created from AI Copilot",
           blenderVersion,
         });
-        projectId = project.id;
+        projectId = createdProject.id;
       }
     }
 

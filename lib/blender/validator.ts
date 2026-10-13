@@ -47,6 +47,15 @@ const FORBIDDEN_RULES: SecurityRule[] = [
   // Deserialization and unsafe serialization
   { pattern: /\bimport\s+(pickle|marshal|shelve)\b/i, category: "serialization", message: "Unsafe deserialization modules are forbidden" },
   { pattern: /\bfrom\s+(pickle|marshal|shelve)\b/i, category: "serialization", message: "Unsafe deserialization modules are forbidden" },
+
+  // Foreign function interface and direct binary/kernel execution
+  { pattern: /\b(import\s+ctypes|from\s+ctypes)\b/i, category: "execution", message: "ctypes foreign function interface is forbidden" },
+
+  // Direct namespace tampering
+  { pattern: /__builtins__(\s*\[|\s*\.|\b)/i, category: "reflection", message: "Direct access to __builtins__ namespace is forbidden" },
+
+  // Destructive Blender workspace and process operations
+  { pattern: /bpy\.ops\.wm\.(quit_blender|read_factory_settings|read_homefile)\b/i, category: "destructive_blender", message: "Destructive Blender workspace resets or quits are forbidden" },
 ];
 
 const BEST_PRACTICE_CHECKS = [

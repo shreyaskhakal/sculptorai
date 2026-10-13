@@ -20,10 +20,12 @@ import {
   BlenderDebugSchema,
 } from "./schemas";
 import { validateBlenderScript } from "../blender/validator";
+import { selectModelForTask } from "./model-router";
+import { executeWithRetry } from "./retry";
 
-export const GEMINI_MODEL_GENERATION = process.env.GEMINI_MODEL_GENERATION || "gemini-1.5-flash";
-export const GEMINI_MODEL_VISION = process.env.GEMINI_MODEL_VISION || "gemini-1.5-flash";
-export const GEMINI_MODEL_DEBUG = process.env.GEMINI_MODEL_DEBUG || "gemini-1.5-flash";
+export const GEMINI_MODEL_GENERATION = process.env.GEMINI_MODEL_GENERATION || "gemini-2.0-flash";
+export const GEMINI_MODEL_VISION = process.env.GEMINI_MODEL_VISION || "gemini-2.0-flash";
+export const GEMINI_MODEL_DEBUG = process.env.GEMINI_MODEL_DEBUG || "gemini-2.0-flash";
 
 export class GeminiAIProvider implements AIProvider {
   public name = "Google Gemini";
@@ -58,9 +60,11 @@ export class GeminiAIProvider implements AIProvider {
       return this.generateFallbackPlan(input);
     }
 
+    const selectedModel = selectModelForTask("generation", complexity);
+
     try {
       const model = this.genAI.getGenerativeModel({
-        model: GEMINI_MODEL_GENERATION,
+        model: selectedModel,
         generationConfig: {
           temperature: 0.2,
           responseMimeType: "application/json",
@@ -83,11 +87,13 @@ ${input.context ? `Additional Scene Context: ${input.context}` : ""}
 Generate the complete JSON modeling plan and executable Blender Python (bpy).
 `;
 
-      const result = await model.generateContent(promptText);
-      const responseText = result.response.text();
-      const cleanedJson = this.cleanJsonString(responseText);
-      const parsed = JSON.parse(cleanedJson);
-      const validated = ModelPlanSchema.parse(parsed);
+      const validated = await executeWithRetry(async () => {
+        const result = await model.generateContent(promptText);
+        const responseText = result.response.text();
+        const cleanedJson = this.cleanJsonString(responseText);
+        const parsed = JSON.parse(cleanedJson);
+        return ModelPlanSchema.parse(parsed);
+      });
 
       const codeValidation = validateBlenderScript(validated.blenderCode);
 
@@ -116,8 +122,9 @@ Generate the complete JSON modeling plan and executable Blender Python (bpy).
         warnings: combinedWarnings,
       };
     } catch (err: unknown) {
-      console.warn("Gemini API call failed, using resilient fallback:", err);
-      return this.generateFallbackPlan(input);
+      console.error("[Gemini API Generation Error]:", err);
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(`Google Gemini generation failed (${selectedModel}): ${msg}`);
     }
   }
 
@@ -126,9 +133,11 @@ Generate the complete JSON modeling plan and executable Blender Python (bpy).
       return this.generateFallbackImageAnalysis(input);
     }
 
+    const selectedModel = selectModelForTask("vision");
+
     try {
       const model = this.genAI.getGenerativeModel({
-        model: GEMINI_MODEL_VISION,
+        model: selectedModel,
         generationConfig: {
           temperature: 0.2,
           responseMimeType: "application/json",
@@ -149,11 +158,13 @@ Respond with the required JSON structure.
         },
       };
 
-      const result = await model.generateContent([prompt, imagePart]);
-      const responseText = result.response.text();
-      const cleaned = this.cleanJsonString(responseText);
-      const parsed = JSON.parse(cleaned);
-      const validated = ImageAnalysisSchema.parse(parsed);
+      const validated = await executeWithRetry(async () => {
+        const result = await model.generateContent([prompt, imagePart]);
+        const responseText = result.response.text();
+        const cleaned = this.cleanJsonString(responseText);
+        const parsed = JSON.parse(cleaned);
+        return ImageAnalysisSchema.parse(parsed);
+      });
 
       return {
         analysisId: `analysis_${Date.now()}`,
@@ -171,8 +182,9 @@ Respond with the required JSON structure.
           : undefined,
       };
     } catch (err: unknown) {
-      console.warn("Gemini vision analysis failed, using fallback:", err);
-      return this.generateFallbackImageAnalysis(input);
+      console.error("[Gemini Vision Analysis Error]:", err);
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(`Google Gemini vision analysis failed (${selectedModel}): ${msg}`);
     }
   }
 
@@ -181,9 +193,11 @@ Respond with the required JSON structure.
       return this.generateFallbackDebug(input);
     }
 
+    const selectedModel = selectModelForTask("debugging");
+
     try {
       const model = this.genAI.getGenerativeModel({
-        model: GEMINI_MODEL_DEBUG,
+        model: selectedModel,
         generationConfig: {
           temperature: 0.1,
           responseMimeType: "application/json",
@@ -204,10 +218,12 @@ ${input.script}
 Identify the root cause, why it happened in Blender's API, and provide the corrected script in JSON.
 `;
 
-      const result = await model.generateContent(promptText);
-      const cleaned = this.cleanJsonString(result.response.text());
-      const parsed = JSON.parse(cleaned);
-      const validated = BlenderDebugSchema.parse(parsed);
+      const validated = await executeWithRetry(async () => {
+        const result = await model.generateContent(promptText);
+        const cleaned = this.cleanJsonString(result.response.text());
+        const parsed = JSON.parse(cleaned);
+        return BlenderDebugSchema.parse(parsed);
+      });
 
       return {
         debugId: `dbg_${Date.now()}`,
@@ -220,8 +236,9 @@ Identify the root cause, why it happened in Blender's API, and provide the corre
         correctedCode: validated.correctedCode,
       };
     } catch (err: unknown) {
-      console.warn("Gemini debug failed, using fallback:", err);
-      return this.generateFallbackDebug(input);
+      console.error("[Gemini Debug Analysis Error]:", err);
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(`Google Gemini debug analysis failed (${selectedModel}): ${msg}`);
     }
   }
 
