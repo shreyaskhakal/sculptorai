@@ -163,7 +163,7 @@ class SCULPTOR_OT_approve_and_run(bpy.types.Operator):
                     message="Completed procedural generation",
                     context=context
                 )
-                SculptorApiClient.report_execution_result(
+                ok_report, res_report = SculptorApiClient.report_execution_result(
                     props.active_execution_id,
                     status="success",
                     stdout=exec_result["stdout"],
@@ -171,6 +171,10 @@ class SCULPTOR_OT_approve_and_run(bpy.types.Operator):
                     duration_ms=exec_result["duration_ms"],
                     context=context
                 )
+                if not ok_report:
+                    report_err = res_report.get("error", "Failed to communicate with SculptorAI server")
+                    props.last_error = f"Local execution succeeded, but server sync failed: {report_err}"
+                    self.report({'WARNING'}, f"Executed in Blender, but reporting to server failed: {report_err}")
         else:
             props.execution_progress = 0
             props.last_status = "Execution Error"
@@ -179,7 +183,7 @@ class SCULPTOR_OT_approve_and_run(bpy.types.Operator):
             
             # Report real failure back to SculptorAI server
             if props.active_execution_id:
-                SculptorApiClient.report_execution_result(
+                ok_report, res_report = SculptorApiClient.report_execution_result(
                     props.active_execution_id,
                     status="error",
                     stdout=exec_result["stdout"],
@@ -187,6 +191,10 @@ class SCULPTOR_OT_approve_and_run(bpy.types.Operator):
                     duration_ms=exec_result["duration_ms"],
                     context=context
                 )
+                if not ok_report:
+                    report_err = res_report.get("error", "Failed to communicate with SculptorAI server")
+                    props.last_error = f"{exec_result['error']} (Server notification failed: {report_err})"
+                    self.report({'WARNING'}, f"Execution error recorded locally, but reporting to server failed: {report_err}")
 
         return {'FINISHED'}
 

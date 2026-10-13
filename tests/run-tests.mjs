@@ -6,6 +6,7 @@ import { testRealtimeBroadcast } from "./realtime/broadcast.test.mjs";
 import { testRBACMatrix } from "./security/rbac.test.mjs";
 import { testMarketplaceSecurity } from "./marketplace/security_pipeline.test.mjs";
 import { testDemoAuthAndTenantSecurity } from "./security/auth_demo_bypass.test.mjs";
+import { testLiveSupabaseSchemaAndRLS } from "./database/live_supabase_verification.test.mjs";
 
 console.log("=================================================");
 console.log("  SCULPTOR AI — MASTER TEST SUITE RUNNER         ");
@@ -59,9 +60,13 @@ async function runAllSuites() {
 
     // 12. Run Marketplace Capability Scanner & Security Test
     await testMarketplaceSecurity();
+    console.log("");
+
+    // 13. Run Live Supabase Database Infrastructure & RLS Verification
+    await testLiveSupabaseSchemaAndRLS();
 
     console.log("\n=================================================");
-    console.log("  ✓ ALL 12 TEST SUITES PASSED 100% CLEANLY!      ");
+    console.log("  ✓ ALL 13 TEST SUITES PASSED 100% CLEANLY!      ");
     console.log("=================================================");
   } catch (error) {
     console.error("Test execution failed:", error);

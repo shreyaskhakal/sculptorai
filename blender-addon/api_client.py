@@ -4,6 +4,16 @@ import urllib.error
 from .auth import get_api_url, get_auth_headers
 from .compat import get_blender_version_string
 
+def _parse_error(e):
+    if isinstance(e, urllib.error.HTTPError):
+        err_body = e.read().decode('utf-8') if e.fp else str(e)
+        try:
+            err_json = json.loads(err_body)
+            return err_json.get("error", f"HTTP {e.code}: {err_body}")
+        except Exception:
+            return f"HTTP {e.code}: {err_body}"
+    return str(e)
+
 class SculptorApiClient:
     @staticmethod
     def test_connection(context=None):
@@ -19,7 +29,7 @@ class SculptorApiClient:
                     return True, data
                 return False, {"error": f"HTTP {response.status}"}
         except Exception as e:
-            return False, {"error": str(e)}
+            return False, {"error": _parse_error(e)}
 
     @staticmethod
     def generate(prompt, blender_version=None, context=None):
@@ -46,15 +56,8 @@ class SculptorApiClient:
             with urllib.request.urlopen(req, timeout=35) as response:
                 data = json.loads(response.read().decode('utf-8'))
                 return True, data
-        except urllib.error.HTTPError as e:
-            err_body = e.read().decode('utf-8') if e.fp else str(e)
-            try:
-                err_json = json.loads(err_body)
-                return False, {"error": err_json.get("error", str(e))}
-            except Exception:
-                return False, {"error": f"HTTP {e.code}: {err_body}"}
         except Exception as e:
-            return False, {"error": str(e)}
+            return False, {"error": _parse_error(e)}
 
     @staticmethod
     def debug_error(error_traceback, script, blender_version=None, context=None):
@@ -80,7 +83,7 @@ class SculptorApiClient:
                 data = json.loads(response.read().decode('utf-8'))
                 return True, data
         except Exception as e:
-            return False, {"error": str(e)}
+            return False, {"error": _parse_error(e)}
 
     @staticmethod
     def claim_next_task(context=None):
@@ -103,7 +106,7 @@ class SculptorApiClient:
                 task = data.get("task")
                 return True, task
         except Exception as e:
-            return False, {"error": str(e)}
+            return False, {"error": _parse_error(e)}
 
     @staticmethod
     def claim_task_by_id(execution_id, context=None):
@@ -125,7 +128,7 @@ class SculptorApiClient:
                 data = json.loads(response.read().decode('utf-8'))
                 return True, data.get("execution")
         except Exception as e:
-            return False, {"error": str(e)}
+            return False, {"error": _parse_error(e)}
 
     @staticmethod
     def start_task(execution_id, context=None):
@@ -144,7 +147,7 @@ class SculptorApiClient:
                 data = json.loads(response.read().decode('utf-8'))
                 return True, data
         except Exception as e:
-            return False, {"error": str(e)}
+            return False, {"error": _parse_error(e)}
 
     @staticmethod
     def report_execution_result(execution_id, status, stdout, stderr, duration_ms, context=None):
@@ -173,7 +176,7 @@ class SculptorApiClient:
                 data = json.loads(response.read().decode('utf-8'))
                 return True, data
         except Exception as e:
-            return False, {"error": str(e)}
+            return False, {"error": _parse_error(e)}
 
     @staticmethod
     def report_execution_progress(execution_id, percent, stage="Executing", message="", context=None):
@@ -200,7 +203,7 @@ class SculptorApiClient:
                 data = json.loads(response.read().decode('utf-8'))
                 return True, data
         except Exception as e:
-            return False, {"error": str(e)}
+            return False, {"error": _parse_error(e)}
 
     @staticmethod
     def send_heartbeat(status="IDLE", device_id=None, device_name=None, current_project=None, current_execution=None, context=None):
@@ -235,7 +238,7 @@ class SculptorApiClient:
                 data = json.loads(response.read().decode('utf-8'))
                 return True, data
         except Exception as e:
-            return False, {"error": str(e)}
+            return False, {"error": _parse_error(e)}
 
     @staticmethod
     def send_snapshot(project_id, snapshot_data, context=None):
@@ -261,5 +264,5 @@ class SculptorApiClient:
                 data = json.loads(response.read().decode('utf-8'))
                 return True, data
         except Exception as e:
-            return False, {"error": str(e)}
+            return False, {"error": _parse_error(e)}
 
