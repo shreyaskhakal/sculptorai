@@ -148,7 +148,7 @@ Returns generation history.
 Returns:
 ```json
 {
-  "status": "ok",
+  "status": "alive",
   "database": "ok",
   "ai": "ok"
 }

@@ -3,6 +3,7 @@ import { getAIProvider } from "@/lib/ai/adapter";
 import { checkRateLimit } from "@/lib/security/rate-limiter";
 import { sanitizePrompt } from "@/lib/security/sanitize";
 import { getAuthenticatedUser } from "@/lib/supabase/server-auth";
+import { toSafeServiceError } from "@/lib/security/service-error";
 
 export async function POST(req: NextRequest) {
   try {
@@ -87,11 +88,11 @@ export async function POST(req: NextRequest) {
       code: result.code,
     });
   } catch (error: unknown) {
-    const errMessage = error instanceof Error ? error.message : "Image analysis failure";
-    console.error("[API Image Analysis Error]:", error);
+    const failure = toSafeServiceError(error, "IMAGE_ANALYSIS");
+    console.error("[API Image Analysis Error]", error instanceof Error ? error.name : "UnknownError");
     return NextResponse.json(
-      { error: errMessage, code: "IMAGE_ANALYSIS_FAILED" },
-      { status: 500 }
+      { error: failure.message, code: failure.code },
+      { status: failure.status }
     );
   }
 }

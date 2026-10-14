@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -67,7 +67,7 @@ export default function DashboardPage() {
   const [newProjectVersion, setNewProjectVersion] = useState("4.x");
   const [isCreating, setIsCreating] = useState(false);
 
-  const getAuthHeaders = (): Record<string, string> => {
+  const getAuthHeaders = useCallback((): Record<string, string> => {
     const headers: Record<string, string> = {};
     if (session?.access_token) {
       headers["Authorization"] = `Bearer ${session.access_token}`;
@@ -76,9 +76,9 @@ export default function DashboardPage() {
       headers["x-demo-mode"] = "true";
     }
     return headers;
-  };
+  }, [session?.access_token, isDemoMode]);
 
-  const fetchDashboardData = () => {
+  const fetchDashboardData = useCallback(() => {
     const authHeaders = getAuthHeaders();
 
     fetch("/api/projects", { headers: authHeaders })
@@ -110,7 +110,7 @@ export default function DashboardPage() {
         }
       })
       .catch(() => {});
-  };
+  }, [getAuthHeaders]);
 
   useEffect(() => {
     if (!isLoading && !user && !isDemoMode) {
@@ -118,7 +118,7 @@ export default function DashboardPage() {
       return;
     }
     fetchDashboardData();
-  }, [user, isLoading, isDemoMode]);
+  }, [user, isLoading, isDemoMode, router, fetchDashboardData]);
 
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();

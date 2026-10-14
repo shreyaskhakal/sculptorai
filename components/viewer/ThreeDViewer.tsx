@@ -201,35 +201,6 @@ export function ThreeDViewer({
         group.add(mesh);
         createdCount++;
       });
-    } else {
-      // Default Studio Demo Showcase (Futuristic Workspace Table & Accessories)
-      const baseMesh = new THREE.Mesh(
-        new THREE.BoxGeometry(1.6, 0.05, 0.8),
-        new THREE.MeshStandardMaterial({
-          color: 0x1f2638,
-          roughness: 0.35,
-          metalness: 0.85,
-          wireframe,
-        })
-      );
-      baseMesh.name = "Cyber_Desk_Surface";
-      baseMesh.position.set(0, 0.75, 0);
-      group.add(baseMesh);
-
-      const monitorMesh = new THREE.Mesh(
-        new THREE.BoxGeometry(0.9, 0.45, 0.03),
-        new THREE.MeshStandardMaterial({
-          color: 0x0a0c12,
-          roughness: 0.2,
-          metalness: 0.9,
-          wireframe,
-        })
-      );
-      monitorMesh.name = "Curved_Monitor";
-      monitorMesh.position.set(0, 1.05, -0.2);
-      group.add(monitorMesh);
-
-      createdCount = 2;
     }
 
     setObjectCount(createdCount);
@@ -325,6 +296,13 @@ export function ThreeDViewer({
         onWheel={handleWheel}
         onContextMenu={(e) => e.preventDefault()}
       />
+      {!sceneSnapshot?.objects?.length && !modelPlan?.objects?.length && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="rounded-lg border border-[#23293D] bg-[#0C0F17]/85 px-4 py-3 text-center text-xs text-[#8E9BB5]">
+            No scene preview yet. Generate a model or connect Blender to preview a scene.
+          </div>
+        </div>
+      )}
 
       {/* Top Floating Control Bar */}
       <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none">

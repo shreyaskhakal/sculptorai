@@ -1,5 +1,7 @@
 # SculptorAI Live Production QA, Architecture Audit & Verification Report
 
+> **Historical report notice (2026-10-14):** The readiness score and PASS totals below were not substantiated by this repository audit and should not be relied on as current verification. See [REPAIR_AND_QA_REPORT.md](REPAIR_AND_QA_REPORT.md) for the evidence-based status, limitations, and unresolved production findings.
+
 **Repository:** [https://github.com/shreyaskhakal/sculptorai](https://github.com/shreyaskhakal/sculptorai)  
 **Branch:** `main`  
 **Current Commit:** `fb4b56e5ec0cdd28ce3327bebd16f071a6787cc0`  

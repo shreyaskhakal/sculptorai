@@ -6,16 +6,13 @@ import { parseAndValidateJson } from "./validation";
 import { executeWithRetry } from "./retry";
 import { selectModelForTask } from "./model-router";
 import { validateBlenderScript } from "../blender/validator";
+import { requireGeminiApiKey } from "./config";
 
 export async function editSceneWithAI(
   input: SceneEditInput,
   apiKey?: string
 ): Promise<{ patch: ScenePatch; code: GeneratedCode; warnings: string[] }> {
-  const key = apiKey || process.env.GEMINI_API_KEY;
-
-  if (!key) {
-    return generateFallbackPatch(input);
-  }
+  const key = requireGeminiApiKey(apiKey, "scene editing");
 
   const genAI = new GoogleGenerativeAI(key);
   const modelName = selectModelForTask("sceneEditor");
@@ -54,6 +51,9 @@ Generate the surgical scene modification JSON operations and executable Blender 
 
   const blenderCode = validated.blenderCode || "";
   const codeValidation = validateBlenderScript(blenderCode);
+  if (!codeValidation.isValid) {
+    throw new Error(`Scene edit script failed safety validation: ${codeValidation.errors.join("; ")}`);
+  }
 
   const patch: ScenePatch = {
     patchId: `patch_${Date.now()}`,
@@ -77,6 +77,7 @@ Generate the surgical scene modification JSON operations and executable Blender 
   };
 }
 
+/** Deterministic fixture helper. Application requests must use editSceneWithAI. */
 export function generateFallbackPatch(input: SceneEditInput): {
   patch: ScenePatch;
   code: GeneratedCode;

@@ -6,16 +6,13 @@ import { parseAndValidateJson } from "./validation";
 import { executeWithRetry } from "./retry";
 import { selectModelForTask } from "./model-router";
 import { validateBlenderScript } from "../blender/validator";
+import { requireGeminiApiKey } from "./config";
 
 export async function generateModelPlanWithAI(
   input: ModelPlanInput,
   apiKey?: string
 ): Promise<{ plan: ModelPlan; code: GeneratedCode; warnings: string[] }> {
-  const key = apiKey || process.env.GEMINI_API_KEY;
-
-  if (!key) {
-    return generateFallbackPlan(input);
-  }
+  const key = requireGeminiApiKey(apiKey, "generation");
 
   const blenderVer = input.blenderVersion || "4.x";
   const style = input.style || "low-poly";
@@ -62,6 +59,9 @@ Generate the complete JSON modeling plan and executable Blender Python (bpy).
 
     const blenderCode = validated.blenderCode || "";
     const codeValidation = validateBlenderScript(blenderCode);
+    if (!codeValidation.isValid) {
+      throw new Error(`Generated Blender script failed safety validation: ${codeValidation.errors.join("; ")}`);
+    }
 
     const combinedWarnings = [
       ...(validated.warnings || []),
@@ -118,11 +118,12 @@ Generate the complete JSON modeling plan and executable Blender Python (bpy).
     };
 
   } catch (err: unknown) {
-    console.warn("AI generation call encountered error, falling back gracefully:", err);
-    return generateFallbackPlan(input);
+    console.error("[AI Generation Error]", err instanceof Error ? err.name : "UnknownError");
+    throw new Error("Google Gemini generation failed.");
   }
 }
 
+/** Deterministic fixture helper. Application requests must use generateModelPlanWithAI. */
 export function generateFallbackPlan(input: ModelPlanInput): {
   plan: ModelPlan;
   code: GeneratedCode;

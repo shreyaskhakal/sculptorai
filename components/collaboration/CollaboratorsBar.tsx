@@ -52,15 +52,10 @@ export function CollaboratorsBar({
                 {c.displayName?.charAt(0).toUpperCase() || "U"}
               </div>
             ))}
-            {collaborators.length === 0 && (
-              <div className="h-5 w-5 rounded-full ring-2 ring-[#0A0C13] bg-zinc-700 text-white text-[9px] font-bold flex items-center justify-center">
-                1
-              </div>
-            )}
           </div>
 
           <span className="text-[11px] text-[#A2ACBF] font-medium hidden sm:inline">
-            {collaborators.length > 0 ? `${collaborators.length} Online` : "Collab"}
+            {`${collaborators.length} Online`}
           </span>
 
           <UserPlus className="w-3.5 h-3.5 text-[#6E7B95] ml-0.5" />

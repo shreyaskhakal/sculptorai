@@ -50,6 +50,7 @@ export function CodeViewer({
 }: CodeViewerProps) {
 
   const [copied, setCopied] = useState(false);
+  const effectiveValidation = code ? validation ?? validateBlenderScript(code) : null;
 
   const handleCopy = async () => {
     if (!code) return;
@@ -85,9 +86,9 @@ export function CodeViewer({
           <Badge variant="default" className="text-[10px] font-mono">
             {lineCount} lines
           </Badge>
-          <div className="flex items-center gap-1 text-[11px] text-[#10B981]">
+          <div className={`flex items-center gap-1 text-[11px] ${effectiveValidation?.isValid ? "text-[#10B981]" : "text-[#69748D]"}`}>
             <ShieldCheck className="w-3.5 h-3.5" />
-            <span>Validated bpy</span>
+            <span>{effectiveValidation ? effectiveValidation.isValid ? "Static checks passed" : "Safety issues found" : "No script to validate"}</span>
           </div>
         </div>
 
@@ -156,8 +157,9 @@ export function CodeViewer({
               variant="primary"
               onClick={onApproveAndRun}
               isLoading={isExecuting}
+              disabled={!effectiveValidation?.isValid}
               className="text-xs font-semibold px-3.5 shadow-glow-orange"
-              title="Approve and execute script in Blender"
+              title={effectiveValidation?.isValid ? "Approve and execute script in Blender" : "A script must pass static safety checks before it can be queued"}
             >
               <Play className="w-3.5 h-3.5 fill-current" />
               <span>Approve & Run</span>
@@ -169,7 +171,7 @@ export function CodeViewer({
       {/* Safety Score Matrix */}
       {code && (
         <div className="p-3 bg-[#0A0D14] border-b border-[#1C2233]">
-          <SafetyScoreCard validation={validation || validateBlenderScript(code)} code={code} />
+          <SafetyScoreCard validation={effectiveValidation} code={code} />
         </div>
       )}
 

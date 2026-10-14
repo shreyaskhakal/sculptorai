@@ -1,26 +1,22 @@
 import assert from "node:assert";
-import fs from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 
 export async function testLiveSupabaseSchemaAndRLS() {
   console.log("▶ Testing Live Supabase Database Infrastructure & RLS Policies...");
 
-  // Load .env.local if present
-  if (fs.existsSync(".env.local")) {
-    const envContent = fs.readFileSync(".env.local", "utf8");
-    envContent.split("\n").forEach((line) => {
-      const [k, ...v] = line.split("=");
-      if (k && v.length) process.env[k.trim()] = v.join("=").trim();
-    });
+  // Live tests must use a dedicated isolated test project, never app/deployment credentials.
+  if (process.env.RUN_LIVE_SUPABASE_TESTS !== "true") {
+    console.log("  ⚠ BLOCKED: set RUN_LIVE_SUPABASE_TESTS=true to opt into isolated Supabase integration checks");
+    return "BLOCKED";
   }
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const serviceKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const url = process.env.SUPABASE_TEST_URL;
+  const anonKey = process.env.SUPABASE_TEST_PUBLISHABLE_KEY;
+  const serviceKey = process.env.SUPABASE_TEST_SECRET_KEY;
 
-  if (!url || !serviceKey || url.includes("placeholder-url")) {
-    console.log("  ⚠ Skipping Live Supabase test: credentials not configured in environment");
-    return;
+  if (!url || !anonKey || !serviceKey || url.includes("placeholder")) {
+    console.log("  ⚠ BLOCKED: dedicated SUPABASE_TEST_* credentials are unavailable");
+    return "BLOCKED";
   }
 
   const adminClient = createClient(url, serviceKey, {
@@ -72,6 +68,7 @@ export async function testLiveSupabaseSchemaAndRLS() {
   }
 
   console.log("Live Supabase Database & Security Verification Passed!\n");
+  return "PASS";
 }
 
 if (process.argv[1]?.endsWith("live_supabase_verification.test.mjs")) {

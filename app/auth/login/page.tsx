@@ -9,7 +9,7 @@ import { useAuth } from "@/components/auth/AuthProvider";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { signIn, enableDemoMode } = useAuth();
+  const { signIn, enableDemoMode, canUseDemoMode } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -96,7 +96,7 @@ export default function LoginPage() {
             </div>
           )}
 
-          <Button
+          {canUseDemoMode && <Button
             type="submit"
             size="md"
             variant="primary"
@@ -105,7 +105,7 @@ export default function LoginPage() {
           >
             <span>Sign In to SculptorAI</span>
             <ArrowRight className="w-4 h-4" />
-          </Button>
+          </Button>}
 
           <Button
             type="button"

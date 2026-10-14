@@ -16,7 +16,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className="bg-[#090A0F] text-[#F0F2F8] min-h-screen antialiased selection:bg-[#F5792A]/30 selection:text-white">
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider demoModeEnabled={process.env.DEMO_MODE === "true"}>{children}</AuthProvider>
       </body>
     </html>
   );

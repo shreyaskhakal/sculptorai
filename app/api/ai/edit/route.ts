@@ -5,6 +5,7 @@ import { validateBlenderScript } from "@/lib/blender/validator";
 import { db } from "@/lib/supabase/db";
 import { checkRateLimit } from "@/lib/security/rate-limiter";
 import { sanitizePrompt } from "@/lib/security/sanitize";
+import { toSafeServiceError } from "@/lib/security/service-error";
 
 export async function POST(req: NextRequest) {
   try {
@@ -37,6 +38,12 @@ export async function POST(req: NextRequest) {
     }
 
     const cleanPrompt = sanitizePrompt(prompt);
+    if (projectId) {
+      const project = await db.getProjectById(projectId, user.id);
+      if (!project) {
+        return NextResponse.json({ error: "Project not found or access denied" }, { status: 404 });
+      }
+    }
     const ai = getAIProvider();
 
     let editResult;
@@ -69,6 +76,12 @@ export async function POST(req: NextRequest) {
     }
 
     const safety = validateBlenderScript(editResult.code.content);
+    if (!safety.isValid) {
+      return NextResponse.json(
+        { error: "The proposed Blender script did not pass safety validation.", code: "UNSAFE_SCRIPT" },
+        { status: 422 }
+      );
+    }
 
     // Save generation and version if projectId provided
     let genRecord = null;
@@ -110,7 +123,8 @@ export async function POST(req: NextRequest) {
       generation: genRecord,
     });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "Failed to execute scene edit";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    const failure = toSafeServiceError(err, "SCENE_EDIT");
+    console.error("[API Scene Edit Error]", err instanceof Error ? err.name : "UnknownError");
+    return NextResponse.json({ error: failure.message, code: failure.code }, { status: failure.status });
   }
 }

@@ -9,6 +9,7 @@ interface AuthContextType {
   session: Session | null;
   isLoading: boolean;
   isDemoMode: boolean;
+  canUseDemoMode: boolean;
   signIn: (email: string, pass: string) => Promise<{ error?: string }>;
   signUp: (email: string, pass: string, name?: string) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
@@ -17,20 +18,20 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+export function AuthProvider({ children, demoModeEnabled = false }: { children: React.ReactNode; demoModeEnabled?: boolean }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isDemoMode, setIsDemoMode] = useState(false);
+  const hasSupabaseConfig = Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+      process.env.NEXT_PUBLIC_SUPABASE_URL !== "https://placeholder-url.supabase.co" &&
+      (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
+  );
+  const canUseDemoMode = demoModeEnabled || (process.env.NODE_ENV !== "production" && !hasSupabaseConfig);
 
   useEffect(() => {
-    // Check if Supabase keys exist
-    const hasKeys =
-      Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL) &&
-      process.env.NEXT_PUBLIC_SUPABASE_URL !== "https://placeholder-url.supabase.co";
-
-    if (!hasKeys) {
-      // Local fallback / demo mode
+    if (demoModeEnabled) {
       setIsDemoMode(true);
       setUser({
         id: "usr_demo_artist",
@@ -40,6 +41,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         aud: "authenticated",
         created_at: new Date().toISOString(),
       } as User);
+      setIsLoading(false);
+      return;
+    }
+
+    // Check if Supabase keys exist
+    const hasKeys =
+      Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL) &&
+      process.env.NEXT_PUBLIC_SUPABASE_URL !== "https://placeholder-url.supabase.co" &&
+      Boolean(process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+
+    if (!hasKeys) {
+      // Missing local credentials can open a demo sandbox during development.
+      // A production build must not create a synthetic signed-in user.
+      if (process.env.NODE_ENV !== "production") {
+        setIsDemoMode(true);
+        setUser({
+          id: "usr_demo_artist",
+          email: "artist@sculptor.ai",
+          app_metadata: {},
+          user_metadata: { full_name: "Blender Artist" },
+          aud: "authenticated",
+          created_at: new Date().toISOString(),
+        } as User);
+      }
       setIsLoading(false);
       return;
     }
@@ -64,10 +89,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         authListener.subscription.unsubscribe();
       };
     } catch {
-      setIsDemoMode(true);
+      setUser(null);
+      setSession(null);
       setIsLoading(false);
     }
-  }, []);
+  }, [demoModeEnabled]);
 
   const signIn = async (email: string, pass: string) => {
     if (isDemoMode) {
@@ -126,6 +152,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const enableDemoMode = () => {
+    if (!canUseDemoMode) return;
     setIsDemoMode(true);
     setUser({
       id: "usr_demo_artist",
@@ -144,6 +171,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         session,
         isLoading,
         isDemoMode,
+        canUseDemoMode,
         signIn,
         signUp,
         signOut,

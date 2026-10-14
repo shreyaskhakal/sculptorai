@@ -4,6 +4,7 @@ import { getAIProvider } from "@/lib/ai/adapter";
 import { checkRateLimit } from "@/lib/security/rate-limiter";
 import { getAuthenticatedUser } from "@/lib/supabase/server-auth";
 import { validateBlenderScript } from "@/lib/blender/validator";
+import { toSafeServiceError } from "@/lib/security/service-error";
 
 export async function POST(req: NextRequest) {
   try {
@@ -51,11 +52,11 @@ export async function POST(req: NextRequest) {
       safeToPreview: safetyCheck.safeToPreview,
     });
   } catch (error: unknown) {
-    const errMessage = error instanceof Error ? error.message : "Debug analysis failure";
-    console.error("[API Debug Error]:", error);
+    const failure = toSafeServiceError(error, "DEBUG");
+    console.error("[API Debug Error]", error instanceof Error ? error.name : "UnknownError");
     return NextResponse.json(
-      { error: errMessage, code: "DEBUG_FAILED" },
-      { status: 500 }
+      { error: failure.message, code: failure.code },
+      { status: failure.status }
     );
   }
 }

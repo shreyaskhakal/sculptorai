@@ -1,4 +1,5 @@
 import { isSupabaseConfigured } from "./server-auth";
+import { guardFallbackStore } from "./fallback-guard";
 import { createAdminClient } from "./admin";
 
 export interface DBProject {
@@ -848,7 +849,10 @@ class FallbackDataStore {
 }
 
 // Global fallback singleton for dev/testing when Supabase credentials are not live
-const fallbackStore = new FallbackDataStore();
+const fallbackStore = guardFallbackStore(
+  new FallbackDataStore(),
+  isSupabaseConfigured
+);
 
 // ==============================================================================
 // Database Access Facade (Routes to Supabase or Fallback)
@@ -876,7 +880,7 @@ export const db = {
         .order("updated_at", { ascending: false });
 
       if (error || !data) {
-        console.warn("[Supabase getProjects error, falling back]:", error);
+        console.warn("[Supabase getProjects error; demo fallback is disabled]:", error);
         return fallbackStore.getProjects(userId);
       }
 
@@ -950,7 +954,7 @@ export const db = {
         .single();
 
       if (error || !created) {
-        console.warn("[Supabase createProject error, falling back]:", error);
+        console.warn("[Supabase createProject error; demo fallback is disabled]:", error);
         return fallbackStore.createProject(data);
       }
 
@@ -1016,7 +1020,7 @@ export const db = {
         .eq("user_id", userId);
 
       if (error) {
-        console.warn("[Supabase deleteProject error, falling back]:", error);
+        console.warn("[Supabase deleteProject error; demo fallback is disabled]:", error);
         return fallbackStore.deleteProject(projectId, userId);
       }
       return true;
@@ -1095,7 +1099,7 @@ export const db = {
         .single();
 
       if (error || !created) {
-        console.warn("[Supabase createGeneration error, falling back]:", error);
+        console.warn("[Supabase createGeneration error; demo fallback is disabled]:", error);
         return fallbackStore.createGeneration(data);
       }
 

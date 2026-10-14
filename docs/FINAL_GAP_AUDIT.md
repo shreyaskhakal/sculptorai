@@ -1,5 +1,7 @@
 # SculptorAI — Final Gap Audit & Production Verification Report
 
+> **Historical claims notice (2026-10-14):** The verification and hardening claims below were not substantiated by the current repository audit. See [REPAIR_AND_QA_REPORT.md](REPAIR_AND_QA_REPORT.md) for current evidence and unresolved production findings.
+
 **Author:** Principal Full-Stack & Systems Engineer  
 **Date:** Current Baseline Audit (October 2026 / Release Candidate)  
 **Repository:** [https://github.com/shreyaskhakal/sculptorai](https://github.com/shreyaskhakal/sculptorai)  

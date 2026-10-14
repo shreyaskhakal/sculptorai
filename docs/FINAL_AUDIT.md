@@ -1,5 +1,7 @@
 # SculptorAI — Production Audit & Hardening Report
 
+> **Historical claims notice (2026-10-14):** Production readiness claims below are not verified by the current repository audit. See [REPAIR_AND_QA_REPORT.md](REPAIR_AND_QA_REPORT.md) for current evidence and remaining blockers.
+
 **Audit Date:** October 2026  
 **Auditor Roles:** Principal Full-Stack Engineer, AI Systems Architect, Blender Python Developer, Application Security Engineer, QA Lead, DevOps Engineer  
 **Repository:** [https://github.com/shreyaskhakal/sculptorai](https://github.com/shreyaskhakal/sculptorai)  

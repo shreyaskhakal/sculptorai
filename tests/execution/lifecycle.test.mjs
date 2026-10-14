@@ -2,7 +2,7 @@ import assert from "node:assert";
 import { db } from "../../lib/supabase/db.ts";
 
 export async function testExecutionLifecycle() {
-  console.log("▶ Testing Execution Pipeline Lifecycle & Atomic Claim Handshake...");
+  console.log("▶ Testing in-memory execution lifecycle state transitions (no Blender client)...");
 
   const userId = "usr_artist_lifecycle";
   const proj = await db.createProject({
@@ -55,7 +55,7 @@ export async function testExecutionLifecycle() {
   assert.strictEqual(completed.status, "success");
   assert.strictEqual(completed.durationMs, 142);
   assert.strictEqual(completed.blenderVersion, "4.2");
-  console.log("  ✓ Task reported execution success with real stdout and timing");
+  console.log("  ✓ Task accepted a local fixture result with stdout and timing (Blender not launched)");
 
   // 6. Test Error Flow
   const errorTask = await db.createExecution({
@@ -75,7 +75,7 @@ export async function testExecutionLifecycle() {
   });
   assert.strictEqual(failed?.status, "error");
   assert.ok(failed?.stderr.includes("AttributeError"));
-  console.log("  ✓ Task reported real execution error and traceback");
+  console.log("  ✓ Task accepted a local fixture error and traceback");
 
   // 7. Test Cancellation
   const cancelTask = await db.createExecution({

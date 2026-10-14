@@ -1,6 +1,6 @@
 import assert from "node:assert";
 
-// Mock generation test covering the 4 required prompt suites
+// Local fixture-shape checks only. These do not call Gemini or verify generated quality.
 const testPrompts = [
   "Create a cube.",
   "Create a chair.",
@@ -49,7 +49,7 @@ function mockGeneratePlan(prompt) {
 }
 
 function runGenerationTests() {
-  console.log("▶ Testing AI Generation Prompts & Output Schema...");
+  console.log("▶ Testing deterministic AI output fixtures (no provider call)...");
 
   for (const prompt of testPrompts) {
     const result = mockGeneratePlan(prompt);
@@ -62,7 +62,7 @@ function runGenerationTests() {
     assert(result.steps.length > 0, "steps must not be empty");
     assert(result.blenderCode.includes("import bpy"), "blenderCode must include import bpy");
 
-    console.log(`  ✓ Prompt '${prompt}' produced valid structured plan & bpy code`);
+    console.log(`  ✓ Fixture for '${prompt}' passed basic shape checks`);
   }
 }
 

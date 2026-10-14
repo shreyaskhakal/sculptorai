@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { ProjectSidebar } from "@/components/projects/ProjectSidebar";
 import { ChatMessage } from "@/components/chat/ChatMessage";
 import { PromptComposer } from "@/components/chat/PromptComposer";
@@ -12,7 +12,7 @@ import { ThreeDViewer } from "@/components/viewer/ThreeDViewer";
 import { OnboardingWizardModal } from "@/components/onboarding/OnboardingWizardModal";
 import { TemplateGalleryModal } from "@/components/templates/TemplateGalleryModal";
 import { VersionComparisonModal } from "@/components/versions/VersionComparisonModal";
-import { SafetyScoreCard } from "@/components/security/SafetyScoreCard";
+import { validateBlenderScript } from "@/lib/blender/validator";
 import { ModelPlan, ImageAnalysis, SceneSnapshot } from "@/types/ai";
 import { DBGenerationVersion, DBTemplate } from "@/lib/supabase/db";
 import {
@@ -38,7 +38,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { useAuth } from "@/components/auth/AuthProvider";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { CollaboratorsBar } from "@/components/collaboration/CollaboratorsBar";
 import { useProjectRealtime } from "@/lib/realtime/useProjectRealtime";
 import { Store } from "lucide-react";
@@ -76,14 +76,15 @@ export default function WorkspacePage({
   params: { projectId: string };
 }) {
   const { projectId } = params;
-  const { isDemoMode, user, session } = useAuth();
+  const { isDemoMode, user, session, isLoading: isAuthLoading } = useAuth();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const executionParamId = searchParams.get("executionId");
 
   const [remoteSelection, setRemoteSelection] = useState<string | null>(null);
   const [remoteSelectorName, setRemoteSelectorName] = useState<string | null>(null);
 
-  const getAuthHeaders = (): Record<string, string> => {
+  const getAuthHeaders = useCallback((): Record<string, string> => {
     const headers: Record<string, string> = {};
     if (session?.access_token) {
       headers["Authorization"] = `Bearer ${session.access_token}`;
@@ -92,7 +93,7 @@ export default function WorkspacePage({
       headers["x-demo-mode"] = "true";
     }
     return headers;
-  };
+  }, [session?.access_token, isDemoMode]);
 
   // Realtime hook for multi-user collaboration & Blender dispatch
   const {
@@ -154,53 +155,15 @@ export default function WorkspacePage({
 
   // Project Meta & Live Blender Status
   const [project, setProject] = useState<ProjectData | null>(null);
-  const [blenderStatus, setBlenderStatus] = useState<string>("IDLE");
+  const [projectLoadState, setProjectLoadState] = useState<"loading" | "ready" | "not_found" | "error">("loading");
+  const [blenderStatus, setBlenderStatus] = useState<string>("OFFLINE");
   const [sceneSnapshot, setSceneSnapshot] = useState<SceneSnapshot | null>(null);
   const [selectedObjectName, setSelectedObjectName] = useState<string | null>(null);
 
   // Active Code & Plan
-  const [activeCode, setActiveCode] = useState<string>(
-    `# SculptorAI Generated Script\nimport bpy\n\ndef main():\n    if bpy.context.active_object and bpy.context.active_object.mode != 'OBJECT':\n        bpy.ops.object.mode_set(mode='OBJECT')\n    bpy.ops.object.select_all(action='DESELECT')\n    for obj in bpy.data.objects:\n        if obj.type == 'MESH':\n            obj.select_set(True)\n    bpy.ops.object.delete(use_global=False)\n    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0.75))\n    desk = bpy.context.active_object\n    desk.name = "Cyber_Desk_Surface"\n    desk.scale = (1.6, 0.8, 0.05)\n    bpy.ops.object.transform_apply(scale=True)\n\nif __name__ == '__main__':\n    main()\n`
-  );
-  const [activePlan, setActivePlan] = useState<ModelPlan | null>({
-    intent: "create_model",
-    summary: "Modular futuristic gaming desk with beveled chamfers and cable grommets.",
-    objects: [
-      {
-        name: "Cyber_Desk_Surface",
-        type: "mesh",
-        description: "Main workspace surface",
-        approxDimensions: { x: 1.6, y: 0.8, z: 0.05 },
-      },
-    ],
-    steps: [
-      {
-        stepNumber: 1,
-        title: "Clean Scene",
-        instructions: "Reset workspace meshes safely.",
-        operationType: "other",
-      },
-      {
-        stepNumber: 2,
-        title: "Model Desk Surface",
-        instructions: "Create scaled cube with 0.02m edge bevel.",
-        operationType: "primitive",
-      },
-    ],
-    materials: [
-      {
-        name: "Dark_Matte_Carbon",
-        targetObject: "Cyber_Desk_Surface",
-        type: "principled_bsdf",
-        roughness: 0.35,
-        metallic: 0.9,
-      },
-    ],
-    lighting: [],
-    camera: undefined,
-    assumptions: ["Units in meters", "Blender 4.x / 3.6 LTS"],
-    warnings: [],
-  });
+  const [activeCode, setActiveCode] = useState<string>("");
+  const [activePlan, setActivePlan] = useState<ModelPlan | null>(null);
+  const activeCodeValidation = activeCode ? validateBlenderScript(activeCode) : null;
 
   const [selectedHistoryVersion, setSelectedHistoryVersion] =
     useState<GenerationHistoryItem | null>(null);
@@ -234,6 +197,12 @@ export default function WorkspacePage({
     setTimeout(() => setToastMessage(null), 3500);
   };
 
+  useEffect(() => {
+    if (!isAuthLoading && !user && !isDemoMode) {
+      router.replace("/auth/login");
+    }
+  }, [isAuthLoading, isDemoMode, router, user]);
+
   // 0. Load Marketplace Injected Execution (if routed via ?executionId=...)
   useEffect(() => {
     if (!executionParamId) return;
@@ -252,18 +221,43 @@ export default function WorkspacePage({
 
   // 1. Fetch Initial Data (Project, Generations, Messages, Versions)
   useEffect(() => {
+    if (isAuthLoading || (!user && !isDemoMode)) return;
     let isMounted = true;
     const authHeaders = getAuthHeaders();
+    setProjectLoadState("loading");
+    setProject(null);
+    setActiveCode("");
+    setActivePlan(null);
 
     // Load Project Details
     fetch(`/api/projects/${projectId}`, { headers: authHeaders })
-      .then((res) => (res.ok ? res.json() : null))
+      .then(async (res) => {
+        if (res.status === 401) {
+          router.replace("/auth/login");
+          throw new Error("Authentication required");
+        }
+        if (res.status === 404) {
+          if (isMounted) setProjectLoadState("not_found");
+          return null;
+        }
+        if (!res.ok) throw new Error("Project could not be loaded");
+        return res.json();
+      })
       .then((data) => {
         if (isMounted && data) {
-          setProject(data);
+          const loadedProject = data.project || data;
+          if (loadedProject?.id) {
+            setProject(loadedProject);
+            setProjectLoadState("ready");
+          } else {
+            setProjectLoadState("not_found");
+          }
         }
       })
-      .catch((err) => console.error("Error loading project:", err));
+      .catch((err) => {
+        console.error("Error loading project:", err);
+        if (isMounted && err.message !== "Authentication required") setProjectLoadState("error");
+      });
 
     // Load Persistent Generations
     fetch(`/api/projects/${projectId}/generations`, { headers: authHeaders })
@@ -324,10 +318,11 @@ export default function WorkspacePage({
     return () => {
       isMounted = false;
     };
-  }, [projectId, session?.access_token, isDemoMode]);
+  }, [projectId, getAuthHeaders, isAuthLoading, isDemoMode, router, user]);
 
   // 2. Continuous Blender Heartbeat & Status Polling
   useEffect(() => {
+    if (isAuthLoading || (!user && !isDemoMode) || projectLoadState !== "ready") return;
     const checkBlenderStatus = async () => {
       try {
         const res = await fetch("/api/blender/status", { headers: getAuthHeaders() });
@@ -343,7 +338,7 @@ export default function WorkspacePage({
     checkBlenderStatus();
     const timer = setInterval(checkBlenderStatus, 8000);
     return () => clearInterval(timer);
-  }, [session?.access_token, isDemoMode]);
+  }, [getAuthHeaders, isAuthLoading, isDemoMode, projectLoadState, user]);
 
   // 3. Real Execution Polling Lifecycle
   useEffect(() => {
@@ -392,7 +387,7 @@ export default function WorkspacePage({
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [activeExecutionId, executionStatus]);
+  }, [activeExecutionId, executionStatus, getAuthHeaders]);
 
   // 4. Handle Prompt Submit (Unified Text, Modification, or Vision)
   const handlePromptSubmit = async (
@@ -653,6 +648,22 @@ export default function WorkspacePage({
     }
   };
 
+  if (isAuthLoading || (!user && !isDemoMode) || projectLoadState === "loading") {
+    return <div className="flex min-h-screen items-center justify-center bg-[#07080C] text-sm text-[#A2ACBF]">Loading your project…</div>;
+  }
+
+  if (projectLoadState === "not_found" || projectLoadState === "error") {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-[#07080C] px-6 text-center text-[#E2E6F2]">
+        <h1 className="text-xl font-semibold">{projectLoadState === "not_found" ? "Project not found" : "Project could not be loaded"}</h1>
+        <p className="max-w-md text-sm text-[#8E9BB5]">
+          {projectLoadState === "not_found" ? "This project may have been removed or you may not have access to it." : "Check your connection and try again."}
+        </p>
+        <Link href="/dashboard" className="text-sm text-[#00E5FF] hover:underline">Return to dashboard</Link>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-screen bg-[#07080C] text-[#E2E6F2] overflow-hidden relative">
       {/* Toast Notification */}
@@ -824,6 +835,7 @@ export default function WorkspacePage({
               size="sm"
               variant="primary"
               onClick={handleQueueTask}
+              disabled={!activeCodeValidation?.isValid || executionStatus === "pending" || executionStatus === "running"}
               className="text-xs font-semibold px-3 shadow-glow-orange flex items-center gap-1.5"
             >
               <Play className="w-3 h-3 fill-current" />
@@ -983,9 +995,9 @@ export default function WorkspacePage({
                   />
                 )}
 
-                {activeRightTab === "plan" && activePlan && (
-                  <ModelPlanCard plan={activePlan} />
-                )}
+                {activeRightTab === "plan" && (activePlan
+                  ? <ModelPlanCard plan={activePlan} />
+                  : <div className="p-6 text-center text-sm text-[#8E9BB5]">No modeling plan yet. Submit a prompt to generate one.</div>)}
 
                 {activeRightTab === "execution" && (
                   <ExecutionPanel

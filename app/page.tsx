@@ -88,7 +88,7 @@ export default function LandingPage() {
                 Sign In
               </Button>
             </Link>
-            <Link href="/projects/proj_cyberpunk_desk">
+            <Link href="/dashboard">
               <Button size="sm" variant="primary" className="text-xs font-semibold">
                 Launch Studio
                 <ArrowRight className="w-3.5 h-3.5" />
@@ -123,7 +123,7 @@ export default function LandingPage() {
           </p>
 
           <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
-            <Link href="/projects/proj_cyberpunk_desk">
+            <Link href="/auth/signup">
               <Button size="lg" variant="primary" className="font-semibold text-sm px-6 shadow-glow-orange">
                 Start Creating Free
                 <ChevronRight className="w-4 h-4" />
@@ -343,7 +343,7 @@ export default function LandingPage() {
             No credit card required. Connect the add-on and start creating in minutes.
           </p>
           <div className="mt-6 flex justify-center gap-4">
-            <Link href="/projects/proj_cyberpunk_desk">
+            <Link href="/dashboard">
               <Button size="lg" variant="primary" className="font-semibold text-xs px-6 shadow-glow-orange">
                 Launch SculptorAI Studio
               </Button>

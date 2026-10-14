@@ -36,6 +36,10 @@ class SculptorProperties(bpy.types.PropertyGroup):
         name="Execution ID",
         default="",
     )
+    active_generation_id: bpy.props.StringProperty(
+        name="Generation ID",
+        default="",
+    )
     active_project_id: bpy.props.StringProperty(
         name="Project ID",
         description="Currently active SculptorAI project ID",
@@ -104,7 +108,9 @@ class SCULPTOR_OT_generate(bpy.types.Operator):
             props.generated_code = res["code"].get("content", "")
             props.plan_summary = res.get("plan", {}).get("summary", "Plan generated successfully")
             props.last_status = "Code Ready (Requires Approval)"
-            props.active_execution_id = res.get("generationId", "")
+            props.active_generation_id = res.get("generationId", "")
+            props.active_execution_id = ""
+            props.active_project_id = res.get("projectId", props.active_project_id)
             self.report({'INFO'}, "Generated Blender script ready. Review and Approve.")
         else:
             props.last_status = "Generation Failed"
@@ -126,12 +132,34 @@ class SCULPTOR_OT_approve_and_run(bpy.types.Operator):
             self.report({'WARNING'}, "No code available to run. Generate or claim a task first.")
             return {'CANCELLED'}
 
+        if not props.active_execution_id and props.active_generation_id:
+            created, execution = SculptorApiClient.create_execution(
+                generation_id=props.active_generation_id,
+                project_id=props.active_project_id,
+                script=code,
+                prompt=props.prompt or props.plan_summary,
+                context=context,
+            )
+            if not created or not execution.get("id"):
+                props.last_status = "Execution Queue Failed"
+                props.last_error = execution.get("error", "Could not persist the approved execution task.")
+                self.report({'ERROR'}, props.last_error)
+                return {'CANCELLED'}
+            props.active_execution_id = execution["id"]
+            props.active_generation_id = ""
+
         props.is_busy = True
         props.last_status = "Executing in Blender..."
 
         # Signal server that execution is running
         if props.active_execution_id:
-            SculptorApiClient.start_task(props.active_execution_id, context=context)
+            started, start_result = SculptorApiClient.start_task(props.active_execution_id, context=context)
+            if not started:
+                props.is_busy = False
+                props.last_status = "Execution Start Failed"
+                props.last_error = start_result.get("error", "Server rejected the execution start request.")
+                self.report({'ERROR'}, props.last_error)
+                return {'CANCELLED'}
 
         props.execution_progress = 25
         if props.active_execution_id:
@@ -213,6 +241,8 @@ class SCULPTOR_OT_toggle_realtime(bpy.types.Operator):
             def on_task(payload):
                 props.generated_code = payload.get("script", "")
                 props.active_execution_id = payload.get("taskId") or payload.get("id", "")
+                props.active_generation_id = payload.get("generationId", "")
+                props.active_project_id = payload.get("projectId", props.active_project_id)
                 props.plan_summary = payload.get("prompt", "Cloud Task")
                 props.last_status = "Task Received via Stream"
 
@@ -274,6 +304,7 @@ class SCULPTOR_OT_clear(bpy.types.Operator):
         props.last_status = "Ready"
         props.last_error = ""
         props.active_execution_id = ""
+        props.active_generation_id = ""
         return {'FINISHED'}
 
 class SCULPTOR_OT_fetch_task(bpy.types.Operator):
@@ -430,6 +461,8 @@ def sculptor_heartbeat_timer():
                 def on_task(payload):
                     props.generated_code = payload.get("script", "")
                     props.active_execution_id = payload.get("taskId") or payload.get("id", "")
+                    props.active_generation_id = payload.get("generationId", "")
+                    props.active_project_id = payload.get("projectId", props.active_project_id)
                     props.plan_summary = payload.get("prompt", "Cloud Task")
                     props.last_status = "Task Received via Stream"
 

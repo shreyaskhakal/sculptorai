@@ -1,5 +1,7 @@
 # SculptorAI — Implementation Status (Post-Remediation & Hardening)
 
+> **Historical claims notice (2026-10-14):** The production-ready completion statuses below are not verified by the current repository audit. See [docs/REPAIR_AND_QA_REPORT.md](docs/REPAIR_AND_QA_REPORT.md) for current evidence and open findings.
+
 **Status Date:** October 2026  
 **Evaluation:** Final Production Hardening & Audit Verification  
 

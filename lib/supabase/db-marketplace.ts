@@ -4,6 +4,7 @@
  */
 
 import { createAdminClient } from "./admin";
+import { guardFallbackStore } from "./fallback-guard";
 import { scanMarketplaceScript, DeclaredCapabilities } from "../marketplace/security-scanner";
 
 export interface DBCreatorProfile {
@@ -86,8 +87,8 @@ function isSupabaseConfigured(): boolean {
   return Boolean(
     process.env.NEXT_PUBLIC_SUPABASE_URL &&
     !process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder") &&
-    process.env.SUPABASE_SERVICE_ROLE_KEY &&
-    !process.env.SUPABASE_SERVICE_ROLE_KEY.includes("placeholder") &&
+    (process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY) &&
+    !(process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY)!.includes("placeholder") &&
     process.env.DEMO_MODE !== "true"
   );
 }
@@ -641,7 +642,10 @@ class MarketplaceStore {
   }
 }
 
-const fallbackStore = new MarketplaceStore();
+const fallbackStore = guardFallbackStore(
+  new MarketplaceStore(),
+  isSupabaseConfigured
+);
 
 export const dbMarketplace = {
   async getTemplates(filter?: { category?: string; search?: string; status?: string }) {

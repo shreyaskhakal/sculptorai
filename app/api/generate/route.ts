@@ -5,6 +5,7 @@ import { checkRateLimit } from "@/lib/security/rate-limiter";
 import { sanitizePrompt } from "@/lib/security/sanitize";
 import { getAuthenticatedUser } from "@/lib/supabase/server-auth";
 import { db } from "@/lib/supabase/db";
+import { toSafeServiceError } from "@/lib/security/service-error";
 
 export async function POST(req: NextRequest) {
   try {
@@ -115,11 +116,11 @@ export async function POST(req: NextRequest) {
       createdAt: savedGeneration.createdAt,
     });
   } catch (error: unknown) {
-    const errMessage = error instanceof Error ? error.message : "Internal generation error";
-    console.error("[API Generate Error]:", error);
+    const failure = toSafeServiceError(error, "GENERATION");
+    console.error("[API Generate Error]", error instanceof Error ? error.name : "UnknownError");
     return NextResponse.json(
-      { error: errMessage, code: "GENERATION_FAILED" },
-      { status: 500 }
+      { error: failure.message, code: failure.code },
+      { status: failure.status }
     );
   }
 }

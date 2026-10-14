@@ -4,6 +4,7 @@
  */
 
 import { createAdminClient } from "./admin";
+import { guardFallbackStore } from "./fallback-guard";
 import { ProjectRole, hasPermission } from "../security/rbac";
 
 export interface DBProjectMember {
@@ -22,8 +23,8 @@ function isSupabaseConfigured(): boolean {
   return Boolean(
     process.env.NEXT_PUBLIC_SUPABASE_URL &&
     !process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder") &&
-    process.env.SUPABASE_SERVICE_ROLE_KEY &&
-    !process.env.SUPABASE_SERVICE_ROLE_KEY.includes("placeholder") &&
+    (process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY) &&
+    !(process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY)!.includes("placeholder") &&
     process.env.DEMO_MODE !== "true"
   );
 }
@@ -147,7 +148,10 @@ class CollaborationStore {
   }
 }
 
-const fallbackStore = new CollaborationStore();
+const fallbackStore = guardFallbackStore(
+  new CollaborationStore(),
+  isSupabaseConfigured
+);
 
 export const dbCollaboration = {
   async getProjectMembers(projectId: string): Promise<DBProjectMember[]> {

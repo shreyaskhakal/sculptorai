@@ -9,7 +9,7 @@ import { useAuth } from "@/components/auth/AuthProvider";
 
 export default function SignupPage() {
   const router = useRouter();
-  const { signUp, enableDemoMode } = useAuth();
+  const { signUp, enableDemoMode, canUseDemoMode } = useAuth();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -114,7 +114,7 @@ export default function SignupPage() {
             </div>
           )}
 
-          <Button
+          {canUseDemoMode && <Button
             type="submit"
             size="md"
             variant="primary"
@@ -123,7 +123,7 @@ export default function SignupPage() {
           >
             <span>Create Free Account</span>
             <ArrowRight className="w-4 h-4" />
-          </Button>
+          </Button>}
 
           <Button
             type="button"

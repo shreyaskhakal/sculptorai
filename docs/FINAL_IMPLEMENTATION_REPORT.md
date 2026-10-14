@@ -1,5 +1,7 @@
 # SculptorAI — Final Engineering Implementation Report
 
+> **Historical claims notice (2026-10-14):** The completion and production-verification claims below are historical and were not substantiated by the current repository audit. See [REPAIR_AND_QA_REPORT.md](REPAIR_AND_QA_REPORT.md) for current evidence and open findings.
+
 ## Realtime Blender Communication + Multi-User Collaboration + Community Marketplace
 
 ---

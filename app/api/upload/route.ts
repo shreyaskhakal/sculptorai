@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
         url = publicUrlData.publicUrl;
       } else {
         if (process.env.NODE_ENV === "production") {
-          console.error("[Storage Upload Error]:", uploadError);
+          console.error("[Storage Upload Error]", uploadError.name);
           return NextResponse.json(
             { error: `Storage upload failed: ${uploadError.message}. Ensure bucket '${bucket}' exists in Supabase Storage.` },
             { status: 500 }
@@ -122,11 +122,10 @@ export async function POST(req: NextRequest) {
       mimeType: file.type,
     });
   } catch (error: unknown) {
-    const errMessage = error instanceof Error ? error.message : "Upload failure";
-    console.error("[API Upload Error]:", error);
+    console.error("[API Upload Error]", error instanceof Error ? error.name : "UnknownError");
     return NextResponse.json(
-      { error: errMessage },
-      { status: 500 }
+      { error: "The upload could not be completed. Please try again.", code: "UPLOAD_FAILED" },
+      { status: 503 }
     );
   }
 }

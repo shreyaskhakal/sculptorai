@@ -5,17 +5,14 @@ import { TaskGraphSchema } from "./schemas";
 import { parseAndValidateJson } from "./validation";
 import { executeWithRetry } from "./retry";
 import { selectModelForTask } from "./model-router";
+import { requireGeminiApiKey } from "./config";
 
 export async function planTaskGraphWithAI(
   goal: string,
   context?: string,
   apiKey?: string
 ): Promise<TaskGraph> {
-  const key = apiKey || process.env.GEMINI_API_KEY;
-
-  if (!key) {
-    return generateFallbackTaskGraph(goal);
-  }
+  const key = requireGeminiApiKey(apiKey, "task planning");
 
   const genAI = new GoogleGenerativeAI(key);
   const modelName = selectModelForTask("reasoning");
@@ -51,36 +48,5 @@ Decompose this into an ordered, dependency-aware task graph.
       status: "planned",
     })),
     estimatedTimeSeconds: validated.estimatedTimeSeconds || 60,
-  };
-}
-
-function generateFallbackTaskGraph(goal: string): TaskGraph {
-  return {
-    graphId: `graph_${Date.now()}`,
-    goal,
-    tasks: [
-      {
-        id: "task_1",
-        title: "Create Primary Structure",
-        description: `Model foundation and primary form for: ${goal}`,
-        dependencies: [],
-        status: "planned",
-      },
-      {
-        id: "task_2",
-        title: "Add Secondary Details & Modifiers",
-        description: "Apply bevels, chamfers, and procedural accents",
-        dependencies: ["task_1"],
-        status: "planned",
-      },
-      {
-        id: "task_3",
-        title: "Setup Materials & Lighting",
-        description: "Configure Principled BSDF node shaders and 3-point lighting",
-        dependencies: ["task_2"],
-        status: "planned",
-      },
-    ],
-    estimatedTimeSeconds: 45,
   };
 }

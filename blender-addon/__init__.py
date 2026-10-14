@@ -14,6 +14,7 @@ import bpy
 from . import preferences
 from . import operators
 from . import panels
+from .realtime_client import SculptorRealtimeClient
 
 classes = (
     preferences.SculptorAddonPreferences,
@@ -41,6 +42,7 @@ def register():
         bpy.app.timers.register(operators.sculptor_heartbeat_timer, first_interval=5.0)
 
 def unregister():
+    SculptorRealtimeClient.stop()
     if hasattr(bpy.app, "timers") and bpy.app.timers.is_registered(operators.sculptor_heartbeat_timer):
         bpy.app.timers.unregister(operators.sculptor_heartbeat_timer)
     del bpy.types.Scene.sculptor_props

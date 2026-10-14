@@ -6,16 +6,13 @@ import { parseAndValidateJson } from "./validation";
 import { executeWithRetry } from "./retry";
 import { selectModelForTask } from "./model-router";
 import { validateBlenderScript } from "../blender/validator";
+import { requireGeminiApiKey } from "./config";
 
 export async function debugBlenderWithAI(
   input: BlenderDebugInput,
   apiKey?: string
 ): Promise<DebugResult> {
-  const key = apiKey || process.env.GEMINI_API_KEY;
-
-  if (!key) {
-    return generateFallbackDebug(input);
-  }
+  const key = requireGeminiApiKey(apiKey, "debugging");
 
   try {
     const genAI = new GoogleGenerativeAI(key);
@@ -56,8 +53,7 @@ Diagnose this error and generate the complete, working, corrected script.
 
     const validation = validateBlenderScript(validated.correctedCode);
     if (!validation.isValid) {
-      console.warn("AI corrected code contained security issues:", validation.errors);
-      return generateFallbackDebug(input);
+      throw new Error(`Corrected Blender script failed safety validation: ${validation.errors.join("; ")}`);
     }
 
     return {
@@ -71,12 +67,12 @@ Diagnose this error and generate the complete, working, corrected script.
       correctedCode: validated.correctedCode,
     };
   } catch (err: unknown) {
-    console.error("[AI Debug Error]:", err);
-    const msg = err instanceof Error ? err.message : String(err);
-    throw new Error(`Google Gemini debug analysis failed: ${msg}`);
+    console.error("[AI Debug Error]", err instanceof Error ? err.name : "UnknownError");
+    throw new Error("Google Gemini debug analysis failed.");
   }
 }
 
+/** Deterministic fixture helper. Application requests must use debugBlenderWithAI. */
 export function generateFallbackDebug(input: BlenderDebugInput): DebugResult {
   const err = input.error.toLowerCase();
   let fixDesc = "Added safe guard checks and ensured proper Blender context mode";

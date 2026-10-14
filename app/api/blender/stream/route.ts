@@ -1,13 +1,28 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { localRealtimeBus } from "@/lib/realtime/broadcast";
 import { RealtimeChannels } from "@/types/realtime";
+import { getAuthenticatedUser } from "@/lib/supabase/server-auth";
+import { db } from "@/lib/supabase/db";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+  const { user, error: authError, statusCode } = await getAuthenticatedUser(req);
+  if (!user) {
+    return NextResponse.json({ error: authError || "Unauthorized" }, { status: statusCode || 401 });
+  }
+
   const { searchParams } = new URL(req.url);
   const projectId = searchParams.get("projectId");
   const deviceId = searchParams.get("deviceId") || "blender_default";
+  if (!projectId) {
+    return NextResponse.json({ error: "projectId is required" }, { status: 400 });
+  }
+
+  const project = await db.getProjectById(projectId, user.id);
+  if (!project) {
+    return NextResponse.json({ error: "Project not found or access denied" }, { status: 404 });
+  }
 
   const encoder = new TextEncoder();
 
@@ -32,10 +47,8 @@ export async function GET(req: NextRequest) {
         }
       };
 
-      const projectChannel = projectId ? RealtimeChannels.project(projectId) : null;
-      if (projectChannel) {
-        localRealtimeBus.on(projectChannel, handleProjectEvent);
-      }
+      const projectChannel = RealtimeChannels.project(projectId);
+      localRealtimeBus.on(projectChannel, handleProjectEvent);
 
       // Heartbeat ping interval
       const pingInterval = setInterval(() => {
@@ -48,9 +61,7 @@ export async function GET(req: NextRequest) {
 
       req.signal.addEventListener("abort", () => {
         clearInterval(pingInterval);
-        if (projectChannel) {
-          localRealtimeBus.off(projectChannel, handleProjectEvent);
-        }
+        localRealtimeBus.off(projectChannel, handleProjectEvent);
         try {
           controller.close();
         } catch {

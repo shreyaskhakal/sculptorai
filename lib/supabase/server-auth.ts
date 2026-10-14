@@ -9,6 +9,10 @@ export interface AuthUser {
 }
 
 export function isSupabaseConfigured(): boolean {
+  // Explicit demo mode uses only the labeled in-memory sandbox, even if
+  // production credentials happen to be present in the environment.
+  if (process.env.DEMO_MODE === "true") return false;
+
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   return Boolean(

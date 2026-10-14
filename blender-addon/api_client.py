@@ -109,16 +109,16 @@ class SculptorApiClient:
             return False, {"error": _parse_error(e)}
 
     @staticmethod
-    def claim_task_by_id(execution_id, context=None):
+    def claim_task_by_id(execution_id, context=None, api_url=None, auth_headers=None, blender_version=None):
         """
         Atomically claims a specific execution task by its ID.
         """
-        base_url = get_api_url(context)
+        base_url = (api_url or get_api_url(context)).rstrip('/')
         url = f"{base_url}/api/executions/{execution_id}/claim"
-        headers = get_auth_headers(context)
+        headers = dict(auth_headers or get_auth_headers(context))
         
         payload = {
-            "blenderVersion": get_blender_version_string()
+            "blenderVersion": blender_version or get_blender_version_string()
         }
         req_data = json.dumps(payload).encode('utf-8')
         req = urllib.request.Request(url, data=req_data, headers=headers, method="POST")
@@ -127,6 +127,26 @@ class SculptorApiClient:
             with urllib.request.urlopen(req, timeout=10) as response:
                 data = json.loads(response.read().decode('utf-8'))
                 return True, data.get("execution")
+        except Exception as e:
+            return False, {"error": _parse_error(e)}
+
+    @staticmethod
+    def create_execution(generation_id, project_id, script, prompt, blender_version=None, context=None):
+        """Persist an execution task after the artist approves locally generated code."""
+        url = f"{get_api_url(context).rstrip('/')}/api/executions"
+        headers = get_auth_headers(context)
+        payload = {
+            "generationId": generation_id,
+            "projectId": project_id,
+            "script": script,
+            "prompt": prompt,
+            "blenderVersion": blender_version or get_blender_version_string(),
+        }
+        req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=15) as response:
+                data = json.loads(response.read().decode("utf-8"))
+                return True, data.get("execution", data)
         except Exception as e:
             return False, {"error": _parse_error(e)}
 

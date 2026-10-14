@@ -1,5 +1,7 @@
 # SculptorAI — Production Readiness Assessment
 
+> **Historical claims notice (2026-10-14):** Completion percentages and readiness statements in this assessment are unverified by the current repository audit. See [docs/REPAIR_AND_QA_REPORT.md](docs/REPAIR_AND_QA_REPORT.md) for the current evidence and open production findings.
+
 **Date:** October 2026  
 **Auditor / Engineering Lead:** SculptorAI Core Engineering Team  
 **Evaluation:** Final Production MVP Hardening & Verification  
