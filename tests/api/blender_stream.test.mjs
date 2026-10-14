@@ -1,8 +1,5 @@
 import assert from "node:assert/strict";
-import { createJiti } from "jiti";
-
-const jiti = createJiti(import.meta.url, { tsconfigPaths: true });
-const { GET } = await jiti.import("../../app/api/blender/stream/route.ts");
+import { GET } from "../../app/api/blender/stream/route.ts";
 
 export async function testBlenderStreamAuthorization() {
   const originalNodeEnv = process.env.NODE_ENV;

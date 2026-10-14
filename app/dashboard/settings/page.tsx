@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/Badge";
 import { useAuth } from "@/components/auth/AuthProvider";
 
 export default function SettingsPage() {
-  const { session, isDemoMode } = useAuth();
+  const { session, isDemoMode, guestToken } = useAuth();
   const [serverUrl, setServerUrl] = useState("http://localhost:3000");
   const [apiKey, setApiKey] = useState("demo-token");
   const [showKey, setShowKey] = useState(false);
@@ -18,12 +18,17 @@ export default function SettingsPage() {
     if (typeof window !== "undefined") {
       setServerUrl(window.location.origin);
     }
-    if (session?.access_token) {
-      setApiKey(session.access_token);
+    const token =
+      session?.access_token ||
+      guestToken ||
+      (typeof window !== "undefined" ? localStorage.getItem("sculptor_guest_token") : null);
+
+    if (token) {
+      setApiKey(token);
     } else if (isDemoMode) {
       setApiKey("demo-token");
     }
-  }, [session, isDemoMode]);
+  }, [session, guestToken, isDemoMode]);
 
   const handleCopy = (val: string) => {
     navigator.clipboard.writeText(val);

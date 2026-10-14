@@ -76,8 +76,8 @@ export default function WorkspacePage({
   params: { projectId: string };
 }) {
   const { projectId } = params;
-  const { isDemoMode, user, session, isLoading: isAuthLoading } = useAuth();
   const router = useRouter();
+  const { isDemoMode, user, session, guestToken, isLoading: isAuthLoading, getAuthHeaders: getContextAuthHeaders } = useAuth();
   const searchParams = useSearchParams();
   const executionParamId = searchParams.get("executionId");
 
@@ -85,15 +85,25 @@ export default function WorkspacePage({
   const [remoteSelectorName, setRemoteSelectorName] = useState<string | null>(null);
 
   const getAuthHeaders = useCallback((): Record<string, string> => {
+    if (getContextAuthHeaders) {
+      const ctxHeaders = getContextAuthHeaders();
+      if (Object.keys(ctxHeaders).length > 0) return ctxHeaders;
+    }
     const headers: Record<string, string> = {};
-    if (session?.access_token) {
-      headers["Authorization"] = `Bearer ${session.access_token}`;
+    const token =
+      session?.access_token ||
+      guestToken ||
+      (typeof window !== "undefined" ? localStorage.getItem("sculptor_guest_token") : null);
+
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+      headers["x-guest-token"] = token;
     } else if (isDemoMode) {
       headers["Authorization"] = "Bearer demo-token";
       headers["x-demo-mode"] = "true";
     }
     return headers;
-  }, [session?.access_token, isDemoMode]);
+  }, [getContextAuthHeaders, session?.access_token, guestToken, isDemoMode]);
 
   // Realtime hook for multi-user collaboration & Blender dispatch
   const {
@@ -197,12 +207,6 @@ export default function WorkspacePage({
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  useEffect(() => {
-    if (!isAuthLoading && !user && !isDemoMode) {
-      router.replace("/auth/login");
-    }
-  }, [isAuthLoading, isDemoMode, router, user]);
-
   // 0. Load Marketplace Injected Execution (if routed via ?executionId=...)
   useEffect(() => {
     if (!executionParamId) return;
@@ -221,7 +225,6 @@ export default function WorkspacePage({
 
   // 1. Fetch Initial Data (Project, Generations, Messages, Versions)
   useEffect(() => {
-    if (isAuthLoading || (!user && !isDemoMode)) return;
     let isMounted = true;
     const authHeaders = getAuthHeaders();
     setProjectLoadState("loading");
@@ -232,11 +235,7 @@ export default function WorkspacePage({
     // Load Project Details
     fetch(`/api/projects/${projectId}`, { headers: authHeaders })
       .then(async (res) => {
-        if (res.status === 401) {
-          router.replace("/auth/login");
-          throw new Error("Authentication required");
-        }
-        if (res.status === 404) {
+        if (res.status === 401 || res.status === 404) {
           if (isMounted) setProjectLoadState("not_found");
           return null;
         }

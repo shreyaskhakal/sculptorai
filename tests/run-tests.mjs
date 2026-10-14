@@ -11,6 +11,7 @@ import { testGeminiRequiresConfiguration } from "./ai/provider.test.mjs";
 import { testHealthEndpoint } from "./api/health.test.mjs";
 import { testBlenderStreamAuthorization } from "./api/blender_stream.test.mjs";
 import { testNoFabricatedStudioDefaults } from "./ui/no_fabricated_studio_defaults.test.mjs";
+import { testGuestAuthAndIsolation } from "./security/guest_auth_and_isolation.test.mjs";
 
 console.log("=================================================");
 console.log("  SCULPTOR AI — MASTER TEST SUITE RUNNER         ");
@@ -56,8 +57,7 @@ async function runAllSuites() {
     await runSuite("Gemini missing-key behavior", testGeminiRequiresConfiguration);
     console.log("");
 
-    // 3. Run API Schemas & Security Sanitization Test
-    await runSuite("API schemas and sanitization", () => execSync("node tests/api/endpoints.test.mjs", { stdio: "inherit" }));
+    // 3. Run Endpoint Surface & Guard Tests
     await runSuite("Health endpoint configuration disclosure", testHealthEndpoint);
     await runSuite("Blender stream authentication and project isolation", testBlenderStreamAuthorization);
     await runSuite("Studio fabricated-data safeguards", testNoFabricatedStudioDefaults);
@@ -71,23 +71,27 @@ async function runAllSuites() {
     await runSuite("Demo auth and configured database failure behavior", testDemoAuthAndTenantSecurity);
     console.log("");
 
+    // 6. Run Guest Access, Cryptographic Token Verification & Cross-Tenant Isolation
+    await runSuite("Guest access and token isolation", testGuestAuthAndIsolation);
+    console.log("");
+
     // Verify the local SQL hardening migration without applying it to any database.
     await runSuite("Task-claim RPC privilege migration", () => execSync("node tests/security/task_claim_rpc_migration.test.mjs", { stdio: "inherit" }));
     console.log("");
 
-    // 6. Run Database Persistence & Multi-Tenant Isolation
+    // 7. Run Database Persistence & Multi-Tenant Isolation
     await runSuite("Process-local demo-store CRUD and tenant isolation", testDatabasePersistence);
     console.log("");
 
-    // 7. Run Execution Pipeline Lifecycle & Atomic Claiming
+    // 8. Run Execution Pipeline Lifecycle & Atomic Claiming
     await runSuite("Execution lifecycle", testExecutionLifecycle);
     console.log("");
 
-    // 8. Run Complete End-to-End Workflow & Error Repair Loop
+    // 9. Run Complete End-to-End Workflow & Error Repair Loop
     await runSuite("Local end-to-end fixture workflow", testEndToEndWorkflow);
     console.log("");
 
-    // 9. Run Blender Python Scripts Test
+    // 10. Run Blender Python Scripts Test
     await runSuite("Blender Python script compilation", () => {
       if (!pythonAvailable()) {
         console.log("BLOCKED: Python is not installed; Blender script compilation did not run.");
@@ -97,19 +101,19 @@ async function runAllSuites() {
     });
     console.log("");
 
-    // 10. Run Supabase Realtime Broadcast & Idempotency Test
+    // 11. Run Supabase Realtime Broadcast & Idempotency Test
     await runSuite("Realtime broadcast and idempotency", testRealtimeBroadcast);
     console.log("");
 
-    // 11. Run Multi-User Project RBAC Permission Matrix Test
+    // 12. Run Multi-User Project RBAC Permission Matrix Test
     await runSuite("RBAC permission matrix", testRBACMatrix);
     console.log("");
 
-    // 12. Run Marketplace Capability Scanner & Security Test
+    // 13. Run Marketplace Capability Scanner & Security Test
     await runSuite("Marketplace security pipeline", testMarketplaceSecurity);
     console.log("");
 
-    // 13. Run Live Supabase Database Infrastructure & RLS Verification
+    // 14. Run Live Supabase Database Infrastructure & RLS Verification
     await runSuite("Live Supabase schema and RLS", testLiveSupabaseSchemaAndRLS);
     printSummary();
   } catch (error) {

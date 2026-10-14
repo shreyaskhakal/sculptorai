@@ -1,11 +1,17 @@
 import { NextRequest } from "next/server";
 import { createServerSupabaseClient } from "./server";
 import { createClient } from "@supabase/supabase-js";
+import {
+  createGuestSession,
+  verifyGuestToken,
+  GUEST_COOKIE_NAME,
+} from "../security/guest-session";
 
 export interface AuthUser {
   id: string;
   email: string;
   isDemo?: boolean;
+  isGuest?: boolean;
 }
 
 export function isSupabaseConfigured(): boolean {
@@ -36,23 +42,46 @@ export function isDemoModeExplicitlyEnabled(): boolean {
   return false;
 }
 
+function getCookieValue(req: any, name: string): string | null {
+  try {
+    if (req.cookies && typeof req.cookies.get === "function") {
+      const c = req.cookies.get(name);
+      return typeof c === "string" ? c : c?.value ?? null;
+    }
+    const cookieHeader = req.headers?.get?.("cookie");
+    if (cookieHeader) {
+      const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
+      return match ? decodeURIComponent(match[1]) : null;
+    }
+  } catch {
+    // Ignore cookie read error
+  }
+  return null;
+}
+
 /**
- * Extracts and verifies the authenticated user from either:
+ * Extracts and verifies the user from:
  * 1. Bearer Token in Authorization header (for Blender add-on and API clients)
- * 2. Supabase Session Cookie (for web Studio and Dashboard)
+ * 2. Cryptographically signed Guest Token (header or cookie)
+ * 3. Supabase Session Cookie (for authenticated sessions)
+ * 4. Automatic secure guest session minting for anonymous visitors
  * 
- * Never trusts a client-provided userId parameter.
+ * Never trusts an unverified client-provided userId.
  * Strictly prevents demo token authentication bypass in production.
  */
-export async function getAuthenticatedUser(req: NextRequest): Promise<{
+export async function getAuthenticatedUser(
+  req: NextRequest | any,
+  options?: { allowGuestAutoMint?: boolean }
+): Promise<{
   user: AuthUser | null;
   error?: string;
   statusCode?: number;
+  guestToken?: string;
 }> {
   const isConfigured = isSupabaseConfigured();
   const demoAllowed = isDemoModeExplicitlyEnabled();
-  const authHeader = req.headers.get("authorization");
-  const isDemoHeader = req.headers.get("x-demo-mode") === "true";
+  const authHeader = req.headers?.get?.("authorization");
+  const isDemoHeader = req.headers?.get?.("x-demo-mode") === "true";
 
   // Check Bearer Token
   if (authHeader && authHeader.toLowerCase().startsWith("bearer ")) {
@@ -72,6 +101,26 @@ export async function getAuthenticatedUser(req: NextRequest): Promise<{
       return {
         user: null,
         error: "Demo tokens are disabled in production mode. Valid Supabase Bearer token required.",
+        statusCode: 401,
+      };
+    }
+
+    // Check signed guest token (used by Blender add-on when paired with guest session)
+    if (token.startsWith("gst_")) {
+      const verified = verifyGuestToken(token);
+      if (verified) {
+        return {
+          user: {
+            id: verified.guestId,
+            email: "guest@sculptor.ai",
+            isDemo: false,
+            isGuest: true,
+          },
+        };
+      }
+      return {
+        user: null,
+        error: "Invalid or forged guest authorization token.",
         statusCode: 401,
       };
     }
@@ -99,10 +148,48 @@ export async function getAuthenticatedUser(req: NextRequest): Promise<{
       } catch (err: unknown) {
         return { user: null, error: "Token verification failed", statusCode: 401 };
       }
+    } else {
+      return { user: null, error: "Invalid authorization token", statusCode: 401 };
     }
   }
 
-  // Check Session Cookies
+  // Check explicit demo header
+  if (isDemoHeader) {
+    if (demoAllowed) {
+      return {
+        user: {
+          id: "usr_demo_artist",
+          email: "artist@sculptor.ai",
+          isDemo: true,
+        },
+      };
+    }
+    return {
+      user: null,
+      error: "Client demo headers are disabled in production mode. Valid authorization required.",
+      statusCode: 401,
+    };
+  }
+
+  // Check Guest Session Cookie or Header
+  const guestHeader = req.headers?.get?.("x-guest-token");
+  const guestCookie = getCookieValue(req, GUEST_COOKIE_NAME);
+  const guestCandidate = guestHeader || guestCookie;
+  if (guestCandidate) {
+    const verified = verifyGuestToken(guestCandidate);
+    if (verified) {
+      return {
+        user: {
+          id: verified.guestId,
+          email: "guest@sculptor.ai",
+          isDemo: false,
+          isGuest: true,
+        },
+      };
+    }
+  }
+
+  // Check Supabase Session Cookies
   if (isConfigured) {
     try {
       const supabase = createServerSupabaseClient();
@@ -122,20 +209,24 @@ export async function getAuthenticatedUser(req: NextRequest): Promise<{
     }
   }
 
-  // If Supabase is unconfigured or explicit Demo Mode is permitted on server
-  if (demoAllowed && (!isConfigured || isDemoHeader)) {
+  // In production mode, requests without a valid session token, guest token, or cookie must be rejected with 401
+  if (process.env.NODE_ENV === "production" && !options?.allowGuestAutoMint) {
     return {
-      user: {
-        id: "usr_demo_artist",
-        email: "artist@sculptor.ai",
-        isDemo: true,
-      },
+      user: null,
+      error: "Authentication required. A valid guest session or user account is required.",
+      statusCode: 401,
     };
   }
 
+  // In development/test environments, mint a secure signed guest session for seamless public access
+  const guest = createGuestSession();
   return {
-    user: null,
-    error: "Unauthorized. Authentication session or Bearer token is required.",
-    statusCode: 401,
+    user: {
+      id: guest.guestId,
+      email: "guest@sculptor.ai",
+      isDemo: false,
+      isGuest: true,
+    },
+    guestToken: guest.token,
   };
 }

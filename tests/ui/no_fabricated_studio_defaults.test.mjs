@@ -12,7 +12,7 @@ export function testNoFabricatedStudioDefaults() {
 
   assert.match(workspace, /useState<string>\(""\)/, "workspace should start with no script");
   assert.match(workspace, /useState<ModelPlan \| null>\(null\)/, "workspace should start with no plan");
-  assert.match(workspace, /router\.replace\("\/auth\/login"\)/, "workspace should send anonymous users to login");
+  assert.doesNotMatch(workspace, /router\.replace\("\/auth\/login"\)/, "workspace must not redirect visitors to retired login route");
   assert.match(workspace, /disabled=\{!activeCodeValidation\?\.isValid/, "workspace execution button must require a safe validated script");
   assert.match(viewer, /No scene preview yet/, "empty viewer should explain that there is no preview");
   assert.doesNotMatch(viewer, /Cyber_Desk_Surface|Curved_Monitor/, "viewer must not inject the showcase model");

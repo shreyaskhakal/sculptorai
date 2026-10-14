@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { localRealtimeBus } from "@/lib/realtime/broadcast";
-import { RealtimeChannels } from "@/types/realtime";
-import { getAuthenticatedUser } from "@/lib/supabase/server-auth";
-import { db } from "@/lib/supabase/db";
+import { localRealtimeBus } from "../../../../lib/realtime/broadcast";
+import { RealtimeChannels } from "../../../../types/realtime";
+import { getAuthenticatedUser } from "../../../../lib/supabase/server-auth";
+import { db } from "../../../../lib/supabase/db";
 
 export const dynamic = "force-dynamic";
 

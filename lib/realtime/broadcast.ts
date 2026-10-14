@@ -4,7 +4,7 @@
  */
 
 import { EventEmitter } from "events";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createAdminClient } from "../supabase/admin";
 import {
   RealtimeChannels,
   RealtimeEventName,
@@ -14,7 +14,7 @@ import {
   ExecutionCompletedEvent,
   SceneUpdatedEvent,
   BlenderHeartbeatEvent,
-} from "@/types/realtime";
+} from "../../types/realtime";
 
 // In-memory bus for local testing and offline execution
 export const localRealtimeBus = new EventEmitter();

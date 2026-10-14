@@ -1,8 +1,8 @@
 # SculptorAI — Deterministic Fixture Validation Report
 
-**Generated on:** 2026-10-14T14:49:33.220Z
+**Generated on:** 2026-10-14T19:08:07.517Z  
 **Total Test Cases:** 49 deterministic fixture cases
-**Benchmark Duration:** 22.74 seconds
+**Benchmark Duration:** 17.23 seconds  
 **Method:** Deterministic local fixtures; this report does not measure Gemini output quality or provider availability.
 **Gemini provider integration:** BLOCKED (GEMINI_API_KEY is unavailable)
 
@@ -15,7 +15,7 @@
 | **Schema Validity Rate** | **100.0%** (49/49) | **PASS** |
 | **Safety Compliance Rate** | **100.0%** (49/49) | **PASS** |
 | **Python Syntax Validity** | **100.0%** (49/49) | **PASS** |
-| **Average Local Processing Time** | **464 ms** | **MEASURED** |
+| **Average Local Processing Time** | **351 ms** | **MEASURED** |
 
 ---
 

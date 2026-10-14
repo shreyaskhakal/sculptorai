@@ -14,11 +14,11 @@ import {
   FileCode,
   Zap,
   Search,
-  LogOut,
   SlidersHorizontal,
   Coffee,
   Plane,
   Trees,
+  User,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -40,7 +40,7 @@ interface ProjectItem {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { user, signOut, isDemoMode, session, isLoading } = useAuth();
+  const { user, signOut, isDemoMode, session, isLoading, getAuthHeaders, isGuest } = useAuth();
 
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [stats, setStats] = useState<{
@@ -67,19 +67,8 @@ export default function DashboardPage() {
   const [newProjectVersion, setNewProjectVersion] = useState("4.x");
   const [isCreating, setIsCreating] = useState(false);
 
-  const getAuthHeaders = useCallback((): Record<string, string> => {
-    const headers: Record<string, string> = {};
-    if (session?.access_token) {
-      headers["Authorization"] = `Bearer ${session.access_token}`;
-    } else if (isDemoMode) {
-      headers["Authorization"] = "Bearer demo-token";
-      headers["x-demo-mode"] = "true";
-    }
-    return headers;
-  }, [session?.access_token, isDemoMode]);
-
   const fetchDashboardData = useCallback(() => {
-    const authHeaders = getAuthHeaders();
+    const authHeaders = getAuthHeaders ? getAuthHeaders() : {};
 
     fetch("/api/projects", { headers: authHeaders })
       .then((res) => (res.ok ? res.json() : null))
@@ -113,12 +102,10 @@ export default function DashboardPage() {
   }, [getAuthHeaders]);
 
   useEffect(() => {
-    if (!isLoading && !user && !isDemoMode) {
-      router.push("/auth/login");
-      return;
+    if (!isLoading) {
+      fetchDashboardData();
     }
-    fetchDashboardData();
-  }, [user, isLoading, isDemoMode, router, fetchDashboardData]);
+  }, [isLoading, user, fetchDashboardData]);
 
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -130,7 +117,7 @@ export default function DashboardPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...getAuthHeaders(),
+          ...(getAuthHeaders ? getAuthHeaders() : {}),
         },
         body: JSON.stringify({
           name: newProjectName,
@@ -161,7 +148,7 @@ export default function DashboardPage() {
 
   const handleSignOut = async () => {
     await signOut();
-    router.push("/auth/login");
+    fetchDashboardData();
   };
 
   const filteredProjects = (projects || []).filter(
@@ -245,16 +232,16 @@ export default function DashboardPage() {
           </Button>
 
           <div className="flex items-center gap-2 pl-3 border-l border-[#1F2536]">
-            <span className="text-xs text-[#A2ACBF] hidden sm:inline">
-              {user?.email || "artist@sculptor.ai"}
-            </span>
-            <button
-              onClick={handleSignOut}
-              className="text-[#6E7B95] hover:text-white p-1 rounded-md transition-colors"
-              title="Sign Out"
+            <Link
+              href="/dashboard/settings"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#111420] border border-[#212739] text-[#A2ACBF] hover:text-white hover:border-[#F5792A]/50 transition-colors text-xs"
+              title="Add-on & Connection Settings"
             >
-              <LogOut className="w-4 h-4" />
-            </button>
+              <User className="w-3.5 h-3.5 text-[#F5792A]" />
+              <span className="hidden sm:inline">
+                {isGuest ? "Guest Studio" : user?.email || "Studio Artist"}
+              </span>
+            </Link>
           </div>
         </div>
       </header>

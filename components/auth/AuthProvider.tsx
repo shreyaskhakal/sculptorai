@@ -1,19 +1,23 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { User, Session } from "@supabase/supabase-js";
 
 interface AuthContextType {
   user: User | null;
   session: Session | null;
+  guestToken: string | null;
   isLoading: boolean;
   isDemoMode: boolean;
   canUseDemoMode: boolean;
+  isGuest: boolean;
+  getAuthHeaders: () => Record<string, string>;
   signIn: (email: string, pass: string) => Promise<{ error?: string }>;
   signUp: (email: string, pass: string, name?: string) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
   enableDemoMode: () => void;
+  resetGuestSession: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -21,14 +25,79 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children, demoModeEnabled = false }: { children: React.ReactNode; demoModeEnabled?: boolean }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
+  const [guestToken, setGuestToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isDemoMode, setIsDemoMode] = useState(false);
+  const [isGuest, setIsGuest] = useState(false);
+
   const hasSupabaseConfig = Boolean(
     process.env.NEXT_PUBLIC_SUPABASE_URL &&
       process.env.NEXT_PUBLIC_SUPABASE_URL !== "https://placeholder-url.supabase.co" &&
       (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
   );
   const canUseDemoMode = demoModeEnabled || (process.env.NODE_ENV !== "production" && !hasSupabaseConfig);
+
+  const initGuestSession = useCallback(async () => {
+    try {
+      const storedToken = typeof window !== "undefined" ? localStorage.getItem("sculptor_guest_token") : null;
+      const headers: Record<string, string> = {};
+      if (storedToken) {
+        headers["x-guest-token"] = storedToken;
+      }
+
+      const res = await fetch("/api/auth/guest", { headers });
+      if (res.ok) {
+        const data = await res.json();
+        setGuestToken(data.token);
+        if (typeof window !== "undefined") {
+          localStorage.setItem("sculptor_guest_token", data.token);
+        }
+
+        const guestUser: User = {
+          id: data.guestId,
+          email: "guest@sculptor.ai",
+          app_metadata: {},
+          user_metadata: { full_name: "Guest Creator" },
+          aud: "authenticated",
+          created_at: new Date().toISOString(),
+        } as User;
+
+        const guestSession: Session = {
+          access_token: data.token,
+          token_type: "bearer",
+          expires_in: 3600 * 24 * 30,
+          refresh_token: data.token,
+          user: guestUser,
+        } as Session;
+
+        setUser(guestUser);
+        setSession(guestSession);
+        setIsGuest(true);
+        setIsDemoMode(false);
+        setIsLoading(false);
+        return;
+      }
+    } catch {
+      // Fallback guest session in-memory
+    }
+
+    // Emergency local fallback guest
+    const localId = typeof window !== "undefined"
+      ? localStorage.getItem("sculptor_guest_id") || "usr_guest_fallback"
+      : "usr_guest_fallback";
+    const emergencyUser = {
+      id: localId,
+      email: "guest@sculptor.ai",
+      app_metadata: {},
+      user_metadata: { full_name: "Guest Creator" },
+      aud: "authenticated",
+      created_at: new Date().toISOString(),
+    } as User;
+
+    setUser(emergencyUser);
+    setIsGuest(true);
+    setIsLoading(false);
+  }, []);
 
   useEffect(() => {
     if (demoModeEnabled) {
@@ -46,42 +115,40 @@ export function AuthProvider({ children, demoModeEnabled = false }: { children: 
     }
 
     // Check if Supabase keys exist
-    const hasKeys =
-      Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL) &&
-      process.env.NEXT_PUBLIC_SUPABASE_URL !== "https://placeholder-url.supabase.co" &&
-      Boolean(process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
-
-    if (!hasKeys) {
-      // Missing local credentials can open a demo sandbox during development.
-      // A production build must not create a synthetic signed-in user.
-      if (process.env.NODE_ENV !== "production") {
-        setIsDemoMode(true);
-        setUser({
-          id: "usr_demo_artist",
-          email: "artist@sculptor.ai",
-          app_metadata: {},
-          user_metadata: { full_name: "Blender Artist" },
-          aud: "authenticated",
-          created_at: new Date().toISOString(),
-        } as User);
+    if (!hasSupabaseConfig) {
+      if (process.env.NODE_ENV !== "production" && canUseDemoMode) {
+        initGuestSession();
+      } else {
+        initGuestSession();
       }
-      setIsLoading(false);
       return;
     }
 
     try {
       const supabase = createClient();
       supabase.auth.getSession().then(({ data: { session } }) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        setIsLoading(false);
+        if (session && session.user) {
+          setSession(session);
+          setUser(session.user);
+          setIsGuest(false);
+          setIsLoading(false);
+        } else {
+          initGuestSession();
+        }
+      }).catch(() => {
+        initGuestSession();
       });
 
       const { data: authListener } = supabase.auth.onAuthStateChange(
         (_event, session) => {
-          setSession(session);
-          setUser(session?.user ?? null);
-          setIsLoading(false);
+          if (session && session.user) {
+            setSession(session);
+            setUser(session.user);
+            setIsGuest(false);
+            setIsLoading(false);
+          } else {
+            initGuestSession();
+          }
         }
       );
 
@@ -89,25 +156,22 @@ export function AuthProvider({ children, demoModeEnabled = false }: { children: 
         authListener.subscription.unsubscribe();
       };
     } catch {
-      setUser(null);
-      setSession(null);
-      setIsLoading(false);
+      initGuestSession();
     }
-  }, [demoModeEnabled]);
+  }, [demoModeEnabled, hasSupabaseConfig, canUseDemoMode, initGuestSession]);
+
+  const getAuthHeaders = useCallback((): Record<string, string> => {
+    const token = session?.access_token || guestToken || (typeof window !== "undefined" ? localStorage.getItem("sculptor_guest_token") : null);
+    if (token) {
+      return {
+        Authorization: `Bearer ${token}`,
+        "x-guest-token": token,
+      };
+    }
+    return {};
+  }, [session, guestToken]);
 
   const signIn = async (email: string, pass: string) => {
-    if (isDemoMode) {
-      setUser({
-        id: "usr_demo_artist",
-        email,
-        app_metadata: {},
-        user_metadata: { full_name: email.split("@")[0] },
-        aud: "authenticated",
-        created_at: new Date().toISOString(),
-      } as User);
-      return {};
-    }
-
     const supabase = createClient();
     const { error } = await supabase.auth.signInWithPassword({
       email,
@@ -118,18 +182,6 @@ export function AuthProvider({ children, demoModeEnabled = false }: { children: 
   };
 
   const signUp = async (email: string, pass: string, name?: string) => {
-    if (isDemoMode) {
-      setUser({
-        id: "usr_demo_artist",
-        email,
-        app_metadata: {},
-        user_metadata: { full_name: name || email.split("@")[0] },
-        aud: "authenticated",
-        created_at: new Date().toISOString(),
-      } as User);
-      return {};
-    }
-
     const supabase = createClient();
     const { error } = await supabase.auth.signUp({
       email,
@@ -143,17 +195,27 @@ export function AuthProvider({ children, demoModeEnabled = false }: { children: 
   };
 
   const signOut = async () => {
-    if (!isDemoMode) {
+    try {
       const supabase = createClient();
       await supabase.auth.signOut();
+    } catch {
+      // Ignore
     }
-    setUser(null);
-    setSession(null);
+    await resetGuestSession();
+  };
+
+  const resetGuestSession = async () => {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("sculptor_guest_token");
+    }
+    setIsLoading(true);
+    await initGuestSession();
   };
 
   const enableDemoMode = () => {
     if (!canUseDemoMode) return;
     setIsDemoMode(true);
+    setIsGuest(false);
     setUser({
       id: "usr_demo_artist",
       email: "demo@sculptor.ai",
@@ -169,13 +231,17 @@ export function AuthProvider({ children, demoModeEnabled = false }: { children: 
       value={{
         user,
         session,
+        guestToken,
         isLoading,
         isDemoMode,
         canUseDemoMode,
+        isGuest,
+        getAuthHeaders,
         signIn,
         signUp,
         signOut,
         enableDemoMode,
+        resetGuestSession,
       }}
     >
       {children}
